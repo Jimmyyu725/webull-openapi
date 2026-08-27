@@ -1,29 +1,18 @@
-import logging
-
-from webull.core.client import ApiClient
-from webull.trade.trade_client import TradeClient
-
-from config import API_ENDPOINT, APP_KEY, APP_SECRET, REGION
+from webull_api import WebullAPI
 
 
 def main() -> int:
-    api_client = ApiClient(APP_KEY, APP_SECRET, REGION)
-    api_client.add_endpoint(REGION, API_ENDPOINT)
-
-    logging.disable(logging.CRITICAL)
     try:
-        response = TradeClient(api_client).account_v2.get_account_list()
+        accounts = WebullAPI().accounts(refresh=True)
     except Exception:
         print("Webull OpenAPI connection failed: credentials or endpoint rejected.")
         return 1
-    finally:
-        logging.disable(logging.NOTSET)
 
-    if response.status_code == 200:
+    if accounts:
         print("Webull OpenAPI connection successful.")
         return 0
 
-    print(f"Webull OpenAPI connection failed: HTTP {response.status_code}")
+    print("Webull OpenAPI connection failed: no paper accounts returned.")
     return 1
 
 
