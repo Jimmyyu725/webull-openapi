@@ -4,7 +4,7 @@
 
 本项目当前只提供只读连接检查，不包含下单功能。
 
-当前凭证已验证可连接 Webull Sandbox；生产端点拒绝了该组凭证。
+当前凭证已验证可连接 Webull Sandbox（Paper Trading），不用于实盘。
 
 ```bash
 python3 -m venv .venv
