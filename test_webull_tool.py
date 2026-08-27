@@ -29,6 +29,7 @@ from webull_orders import (
     validate_batch_orders,
     validate_order,
 )
+from supertrend_strategy import supertrend_signals, wilder_atr
 
 
 OPTION_LEG = {
@@ -261,11 +262,49 @@ class CryptoStrategyTests(unittest.TestCase):
         self.assertEqual(trade["reason"], "stop")
         self.assertEqual(trade["exit_price"], 89.1)
 
+    def test_backtest_can_disable_extra_stop(self):
+        bars = make_bars(53)
+        bars[52] = Bar(bars[52].time, Decimal("90"), Decimal("91"), Decimal("80"), Decimal("90"))
+        generated = ["HOLD"] * 53
+        generated[50] = "BUY"
+        result = backtest(
+            bars,
+            spread=Decimal("0.01"),
+            stop_loss=None,
+            signal_values=generated,
+        )
+        self.assertEqual(result["trades"][0]["reason"], "end")
+
     def test_quantity_rounds_down_to_lot_size(self):
         self.assertEqual(
             quantity_for_notional(Decimal("10"), Decimal("3"), Decimal("0.01")),
             Decimal("3.33"),
         )
+
+    def test_wilder_atr_uses_recursive_smoothing(self):
+        bars = make_bars(4)
+        bars[2] = Bar(bars[2].time, Decimal("100"), Decimal("104"), Decimal("98"), Decimal("103"))
+        bars[3] = Bar(bars[3].time, Decimal("103"), Decimal("104"), Decimal("102"), Decimal("103"))
+        result = wilder_atr(bars, period=2)
+        self.assertEqual(result[1], Decimal("2"))
+        self.assertEqual(result[2], Decimal("4"))
+        self.assertEqual(result[3], Decimal("3"))
+
+    def test_supertrend_emits_reversal_signals(self):
+        closes = (Decimal("10"), Decimal("11"), Decimal("12"), Decimal("4"), Decimal("3"), Decimal("12"))
+        bars = [
+            Bar(
+                datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(hours=index),
+                close,
+                close + Decimal("0.5"),
+                close - Decimal("0.5"),
+                close,
+            )
+            for index, close in enumerate(closes)
+        ]
+        result = supertrend_signals(bars, period=2, multiplier=Decimal("1"))
+        self.assertIn("SELL", result)
+        self.assertIn("BUY", result)
 
     def test_normalize_sorts_deduplicates_and_drops_open_candle(self):
         now = datetime(2026, 1, 2, tzinfo=timezone.utc)

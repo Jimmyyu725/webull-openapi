@@ -385,6 +385,17 @@ def cmd_crypto_backtest(api: WebullAPI, args: argparse.Namespace) -> int:
     })
 
 
+def cmd_supertrend_backtest(api: WebullAPI, args: argparse.Namespace) -> int:
+    from supertrend_strategy import run_supertrend_backtests, save_report
+
+    report = run_supertrend_backtests(api, days=args.days, source=args.source)
+    json_path, markdown_path = save_report(report)
+    return emit({
+        "json_report": str(json_path),
+        "markdown_report": str(markdown_path),
+    })
+
+
 def cmd_crypto_run_once(api: WebullAPI, args: argparse.Namespace) -> int:
     from crypto_runtime import run_once
 
@@ -610,6 +621,12 @@ def build_parser() -> argparse.ArgumentParser:
     crypto_backtest.add_argument("--days", type=int, default=90, choices=(90,))
     crypto_backtest.add_argument("--source", choices=("both", "webull", "coinbase"), default="both")
     crypto_backtest.set_defaults(handler=cmd_crypto_backtest)
+    supertrend_backtest = crypto_sub.add_parser("supertrend-backtest")
+    supertrend_backtest.add_argument("--days", type=int, default=90, choices=(90,))
+    supertrend_backtest.add_argument(
+        "--source", choices=("both", "webull", "coinbase"), default="both"
+    )
+    supertrend_backtest.set_defaults(handler=cmd_supertrend_backtest)
     crypto_run = crypto_sub.add_parser("run-once")
     crypto_run.add_argument("--yes", action="store_true")
     crypto_run.set_defaults(handler=cmd_crypto_run_once)

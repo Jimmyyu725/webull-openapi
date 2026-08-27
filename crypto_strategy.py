@@ -339,11 +339,14 @@ def backtest(
     spread: Decimal = BASE_SPREAD,
     initial_capital: Decimal = INITIAL_CAPITAL,
     allocation: Decimal = ALLOCATION,
-    stop_loss: Decimal = STOP_LOSS,
+    stop_loss: Optional[Decimal] = STOP_LOSS,
+    signal_values: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     if len(bars) < 52:
         raise ValueError("At least 52 closed bars are required")
-    generated_signals = signals(bars)
+    generated_signals = signal_values if signal_values is not None else signals(bars)
+    if len(generated_signals) != len(bars):
+        raise ValueError("Signal count must match bar count")
     cash = initial_capital
     quantity = Decimal("0")
     entry_price = Decimal("0")
@@ -367,7 +370,7 @@ def backtest(
             trades.append(Trade(entry_time, bar.time, entry_price, price, quantity, pnl, "signal"))
             quantity, entry_price, entry_time = Decimal("0"), Decimal("0"), None
 
-        if quantity > 0:
+        if quantity > 0 and stop_loss is not None:
             stop_price = entry_price * (Decimal("1") - stop_loss)
             executable_low = bar.low * (Decimal("1") - spread)
             if executable_low <= stop_price:

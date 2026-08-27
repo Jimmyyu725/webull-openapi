@@ -218,6 +218,12 @@ python3 -m venv .venv
 .venv/bin/python webull_cli.py crypto-strategy backtest --days 90 --source both
 ```
 
+可独立评估 MPL 2.0 的 SuperTrend 策略（ATR 10、倍数3）；该命令只生成报告，不改变自动交易任务：
+
+```bash
+.venv/bin/python webull_cli.py crypto-strategy supertrend-backtest --days 90 --source both
+```
+
 报告写入 `reports/crypto-backtest-90d.md` 和 `reports/crypto-backtest-90d.json`。Webull M120 回测按下一根 K 线开盘成交，并测试每边 0.5%、1% 和 1.5% 成本；Coinbase M5 只作高频诊断。只有 Webull M120 在每边 1% 成本下净收益为正、至少 3 笔交易且数据检查通过的标的会被放行。
 
 门槛通过后安装 30 天自动 Sandbox 模拟交易：

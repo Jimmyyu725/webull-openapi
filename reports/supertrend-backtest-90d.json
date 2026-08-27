@@ -1,0 +1,622 @@
+{
+  "generated_at": "2026-08-27T13:29:54.499338+00:00",
+  "comparison_period_end": "2026-08-27T13:11:42.019445+00:00",
+  "days": 90,
+  "strategy": {
+    "name": "SuperTrend",
+    "atr_period": 10,
+    "atr_multiplier": 3.0,
+    "atr_method": "Wilder RMA",
+    "mode": "Webull-compatible long-only; SELL closes the long position",
+    "stop_loss": null
+  },
+  "sources": {
+    "webull_m120": {
+      "timeframe": "M120",
+      "symbols": {
+        "BTCUSD": {
+          "quality": {
+            "expected_bars": 1080,
+            "actual_bars": 1080,
+            "coverage": 1.0,
+            "duplicates": 0,
+            "max_gap_seconds": 7200,
+            "passed": true
+          },
+          "first_bar": "2026-05-29T12:00:00+00:00",
+          "last_bar": "2026-08-27T10:00:00+00:00",
+          "allocations": {
+            "0.005": {
+              "0.0000": {
+                "spread_per_side": 0.0,
+                "net_profit": 711.63173989,
+                "account_return": 0.00071163,
+                "allocated_return": 0.14232635,
+                "trade_count": 14,
+                "win_rate": 0.357143,
+                "profit_factor": 1.791826,
+                "max_drawdown": 0.00075657,
+                "average_holding_hours": 82.57,
+                "buy_hold_profit": 415.75404444,
+                "excess_vs_buy_hold": 295.87769545
+              },
+              "0.0025": {
+                "spread_per_side": 0.0025,
+                "net_profit": 358.78546319,
+                "account_return": 0.00035879,
+                "allocated_return": 0.07175709,
+                "trade_count": 14,
+                "win_rate": 0.357143,
+                "profit_factor": 1.320779,
+                "max_drawdown": 0.00102689,
+                "average_holding_hours": 82.57,
+                "buy_hold_profit": 388.74281371,
+                "excess_vs_buy_hold": -29.95735052
+              },
+              "0.0050": {
+                "spread_per_side": 0.005,
+                "net_profit": 7.80936979,
+                "account_return": 7.81e-06,
+                "allocated_return": 0.00156187,
+                "trade_count": 14,
+                "win_rate": 0.285714,
+                "profit_factor": 1.005761,
+                "max_drawdown": 0.0012958,
+                "average_holding_hours": 82.57,
+                "buy_hold_profit": 361.86593717,
+                "excess_vs_buy_hold": -354.05656738
+              },
+              "0.0100": {
+                "spread_per_side": 0.01,
+                "net_profit": -688.59179023,
+                "account_return": -0.00068859,
+                "allocated_return": -0.13771836,
+                "trade_count": 14,
+                "win_rate": 0.214286,
+                "profit_factor": 0.631972,
+                "max_drawdown": 0.00194127,
+                "average_holding_hours": 82.57,
+                "buy_hold_profit": 308.51139454,
+                "excess_vs_buy_hold": -997.10318477
+              },
+              "0.0150": {
+                "spread_per_side": 0.015,
+                "net_profit": -1377.68810864,
+                "account_return": -0.00137769,
+                "allocated_return": -0.27553762,
+                "trade_count": 14,
+                "win_rate": 0.071429,
+                "profit_factor": 0.439998,
+                "max_drawdown": 0.00261712,
+                "average_holding_hours": 82.57,
+                "buy_hold_profit": 255.68248383,
+                "excess_vs_buy_hold": -1633.37059247
+              }
+            },
+            "0.450": {
+              "0.0000": {
+                "spread_per_side": 0.0,
+                "net_profit": 58926.89556824,
+                "account_return": 0.0589269,
+                "allocated_return": 0.13094866,
+                "trade_count": 14,
+                "win_rate": 0.357143,
+                "profit_factor": 1.743004,
+                "max_drawdown": 0.0661147,
+                "average_holding_hours": 82.57,
+                "buy_hold_profit": 37417.86564681,
+                "excess_vs_buy_hold": 21509.02992143
+              },
+              "0.0025": {
+                "spread_per_side": 0.0025,
+                "net_profit": 25991.53880652,
+                "account_return": 0.02599154,
+                "allocated_return": 0.05775898,
+                "trade_count": 14,
+                "win_rate": 0.357143,
+                "profit_factor": 1.266461,
+                "max_drawdown": 0.08874162,
+                "average_holding_hours": 82.57,
+                "buy_hold_profit": 34986.85386303,
+                "excess_vs_buy_hold": -8995.31505651
+              },
+              "0.0050": {
+                "spread_per_side": 0.005,
+                "net_profit": -5833.78141674,
+                "account_return": -0.00583378,
+                "allocated_return": -0.01296396,
+                "trade_count": 14,
+                "win_rate": 0.285714,
+                "profit_factor": 0.950032,
+                "max_drawdown": 0.11076018,
+                "average_holding_hours": 82.57,
+                "buy_hold_profit": 32567.93664013,
+                "excess_vs_buy_hold": -38401.71805687
+              },
+              "0.0100": {
+                "spread_per_side": 0.01,
+                "net_profit": -66313.74603561,
+                "account_return": -0.06631375,
+                "allocated_return": -0.14736388,
+                "trade_count": 14,
+                "win_rate": 0.214286,
+                "profit_factor": 0.577196,
+                "max_drawdown": 0.1619097,
+                "average_holding_hours": 82.57,
+                "buy_hold_profit": 27766.02674316,
+                "excess_vs_buy_hold": -94079.77277877
+              },
+              "0.0150": {
+                "spread_per_side": 0.015,
+                "net_profit": -122816.64184487,
+                "account_return": -0.12281664,
+                "allocated_return": -0.27292587,
+                "trade_count": 14,
+                "win_rate": 0.071429,
+                "profit_factor": 0.388552,
+                "max_drawdown": 0.21217968,
+                "average_holding_hours": 82.57,
+                "buy_hold_profit": 23011.42628652,
+                "excess_vs_buy_hold": -145828.06813139
+              }
+            }
+          },
+          "beats_buy_hold_at_45pct": false
+        },
+        "ETHUSD": {
+          "quality": {
+            "expected_bars": 1080,
+            "actual_bars": 1080,
+            "coverage": 1.0,
+            "duplicates": 0,
+            "max_gap_seconds": 7200,
+            "passed": true
+          },
+          "first_bar": "2026-05-29T12:00:00+00:00",
+          "last_bar": "2026-08-27T10:00:00+00:00",
+          "allocations": {
+            "0.005": {
+              "0.0000": {
+                "spread_per_side": 0.0,
+                "net_profit": 516.14882854,
+                "account_return": 0.00051615,
+                "allocated_return": 0.10322977,
+                "trade_count": 14,
+                "win_rate": 0.285714,
+                "profit_factor": 1.459126,
+                "max_drawdown": 0.0010366,
+                "average_holding_hours": 69.86,
+                "buy_hold_profit": 1239.34479768,
+                "excess_vs_buy_hold": -723.19596914
+              },
+              "0.0025": {
+                "spread_per_side": 0.0025,
+                "net_profit": 164.34150244,
+                "account_return": 0.00016434,
+                "allocated_return": 0.0328683,
+                "trade_count": 14,
+                "win_rate": 0.214286,
+                "profit_factor": 1.119271,
+                "max_drawdown": 0.00116562,
+                "average_holding_hours": 69.86,
+                "buy_hold_profit": 1208.22587497,
+                "excess_vs_buy_hold": -1043.88437253
+              },
+              "0.0050": {
+                "spread_per_side": 0.005,
+                "net_profit": -185.60156133,
+                "account_return": -0.0001856,
+                "allocated_return": -0.03712031,
+                "trade_count": 14,
+                "win_rate": 0.142857,
+                "profit_factor": 0.887514,
+                "max_drawdown": 0.00143381,
+                "average_holding_hours": 69.86,
+                "buy_hold_profit": 1177.26176723,
+                "excess_vs_buy_hold": -1362.86332856
+              },
+              "0.0100": {
+                "spread_per_side": 0.01,
+                "net_profit": -879.9538153,
+                "account_return": -0.00087995,
+                "allocated_return": -0.17599076,
+                "trade_count": 14,
+                "win_rate": 0.142857,
+                "profit_factor": 0.605346,
+                "max_drawdown": 0.00203442,
+                "average_holding_hours": 69.86,
+                "buy_hold_profit": 1115.79341723,
+                "excess_vs_buy_hold": -1995.74723253
+              },
+              "0.0150": {
+                "spread_per_side": 0.015,
+                "net_profit": -1567.02413316,
+                "account_return": -0.00156702,
+                "allocated_return": -0.31340483,
+                "trade_count": 14,
+                "win_rate": 0.142857,
+                "profit_factor": 0.441009,
+                "max_drawdown": 0.00265966,
+                "average_holding_hours": 69.86,
+                "buy_hold_profit": 1054.93066645,
+                "excess_vs_buy_hold": -2621.95479961
+              }
+            },
+            "0.450": {
+              "0.0000": {
+                "spread_per_side": 0.0,
+                "net_profit": 40001.36008636,
+                "account_return": 0.04000136,
+                "allocated_return": 0.08889191,
+                "trade_count": 14,
+                "win_rate": 0.285714,
+                "profit_factor": 1.406595,
+                "max_drawdown": 0.08936526,
+                "average_holding_hours": 69.86,
+                "buy_hold_profit": 111541.03217385,
+                "excess_vs_buy_hold": -71539.67208749
+              },
+              "0.0025": {
+                "spread_per_side": 0.0025,
+                "net_profit": 7705.91927706,
+                "account_return": 0.00770592,
+                "allocated_return": 0.01712427,
+                "trade_count": 14,
+                "win_rate": 0.214286,
+                "profit_factor": 1.064605,
+                "max_drawdown": 0.1004255,
+                "average_holding_hours": 69.86,
+                "buy_hold_profit": 108740.3287716,
+                "excess_vs_buy_hold": -101034.40949454
+              },
+              "0.0050": {
+                "spread_per_side": 0.005,
+                "net_profit": -23502.53529478,
+                "account_return": -0.02350254,
+                "allocated_return": -0.05222786,
+                "trade_count": 14,
+                "win_rate": 0.142857,
+                "profit_factor": 0.833569,
+                "max_drawdown": 0.12212961,
+                "average_holding_hours": 69.86,
+                "buy_hold_profit": 105953.55921712,
+                "excess_vs_buy_hold": -129456.0945119
+              },
+              "0.0100": {
+                "spread_per_side": 0.01,
+                "net_profit": -82814.4246746,
+                "account_return": -0.08281442,
+                "allocated_return": -0.18403205,
+                "trade_count": 14,
+                "win_rate": 0.142857,
+                "profit_factor": 0.555485,
+                "max_drawdown": 0.16955087,
+                "average_holding_hours": 69.86,
+                "buy_hold_profit": 100421.40777229,
+                "excess_vs_buy_hold": -183235.83244689
+              },
+              "0.0150": {
+                "spread_per_side": 0.015,
+                "net_profit": -138231.31185385,
+                "account_return": -0.13823131,
+                "allocated_return": -0.30718069,
+                "trade_count": 14,
+                "win_rate": 0.142857,
+                "profit_factor": 0.395036,
+                "max_drawdown": 0.21580805,
+                "average_holding_hours": 69.86,
+                "buy_hold_profit": 94943.76028539,
+                "excess_vs_buy_hold": -233175.07213924
+              }
+            }
+          },
+          "beats_buy_hold_at_45pct": false
+        }
+      }
+    },
+    "coinbase_m5": {
+      "timeframe": "M5",
+      "diagnostic_only": true,
+      "symbols": {
+        "BTCUSD": {
+          "quality": {
+            "expected_bars": 25920,
+            "actual_bars": 25920,
+            "coverage": 1.0,
+            "duplicates": 86,
+            "max_gap_seconds": 300,
+            "passed": true
+          },
+          "first_bar": "2026-05-29T13:10:00+00:00",
+          "last_bar": "2026-08-27T13:05:00+00:00",
+          "allocations": {
+            "0.005": {
+              "0.0000": {
+                "spread_per_side": 0.0,
+                "net_profit": -186.42094582,
+                "account_return": -0.00018642,
+                "allocated_return": -0.03728419,
+                "trade_count": 367,
+                "win_rate": 0.33515,
+                "profit_factor": 0.956143,
+                "max_drawdown": 0.00108904,
+                "average_holding_hours": 3.03,
+                "buy_hold_profit": 422.94144818,
+                "excess_vs_buy_hold": -609.362394
+              },
+              "0.0025": {
+                "spread_per_side": 0.0025,
+                "net_profit": -9294.28364165,
+                "account_return": -0.00929428,
+                "allocated_return": -1.85885673,
+                "trade_count": 367,
+                "win_rate": 0.141689,
+                "profit_factor": 0.180733,
+                "max_drawdown": 0.00940108,
+                "average_holding_hours": 3.03,
+                "buy_hold_profit": 395.89434339,
+                "excess_vs_buy_hold": -9690.17798504
+              },
+              "0.0050": {
+                "spread_per_side": 0.005,
+                "net_profit": -18274.70420468,
+                "account_return": -0.0182747,
+                "allocated_return": -3.65494084,
+                "trade_count": 367,
+                "win_rate": 0.06267,
+                "profit_factor": 0.057578,
+                "max_drawdown": 0.01835553,
+                "average_holding_hours": 3.03,
+                "buy_hold_profit": 368.98186487,
+                "excess_vs_buy_hold": -18643.68606955
+              },
+              "0.0100": {
+                "spread_per_side": 0.01,
+                "net_profit": -35862.33601817,
+                "account_return": -0.03586234,
+                "allocated_return": -7.1724672,
+                "trade_count": 367,
+                "win_rate": 0.019074,
+                "profit_factor": 0.012828,
+                "max_drawdown": 0.03592347,
+                "average_holding_hours": 3.03,
+                "buy_hold_profit": 315.55648272,
+                "excess_vs_buy_hold": -36177.89250089
+              },
+              "0.0150": {
+                "spread_per_side": 0.015,
+                "net_profit": -52967.06162902,
+                "account_return": -0.05296706,
+                "allocated_return": -10.59341233,
+                "trade_count": 367,
+                "win_rate": 0.00545,
+                "profit_factor": 0.004469,
+                "max_drawdown": 0.05302652,
+                "average_holding_hours": 3.03,
+                "buy_hold_profit": 262.65750536,
+                "excess_vs_buy_hold": -53229.71913438
+              }
+            },
+            "0.450": {
+              "0.0000": {
+                "spread_per_side": 0.0,
+                "net_profit": -18682.23970232,
+                "account_return": -0.01868224,
+                "allocated_return": -0.04151609,
+                "trade_count": 367,
+                "win_rate": 0.33515,
+                "profit_factor": 0.948829,
+                "max_drawdown": 0.09442283,
+                "average_holding_hours": 3.03,
+                "buy_hold_profit": 38064.73416987,
+                "excess_vs_buy_hold": -56746.97387219
+              },
+              "0.0025": {
+                "spread_per_side": 0.0025,
+                "net_profit": -569762.4969646,
+                "account_return": -0.5697625,
+                "allocated_return": -1.26613888,
+                "trade_count": 367,
+                "win_rate": 0.141689,
+                "profit_factor": 0.168549,
+                "max_drawdown": 0.57391541,
+                "average_holding_hours": 3.03,
+                "buy_hold_profit": 35630.49606907,
+                "excess_vs_buy_hold": -605392.99303367
+              },
+              "0.0050": {
+                "spread_per_side": 0.005,
+                "net_profit": -810945.03320088,
+                "account_return": -0.81094503,
+                "allocated_return": -1.80210007,
+                "trade_count": 367,
+                "win_rate": 0.06267,
+                "profit_factor": 0.049446,
+                "max_drawdown": 0.81234374,
+                "average_holding_hours": 3.03,
+                "buy_hold_profit": 33208.36865109,
+                "excess_vs_buy_hold": -844153.40185197
+              },
+              "0.0100": {
+                "spread_per_side": 0.01,
+                "net_profit": -963248.77918785,
+                "account_return": -0.96324878,
+                "allocated_return": -2.14055284,
+                "trade_count": 367,
+                "win_rate": 0.019074,
+                "profit_factor": 0.005378,
+                "max_drawdown": 0.96345948,
+                "average_holding_hours": 3.03,
+                "buy_hold_profit": 28400.08596066,
+                "excess_vs_buy_hold": -991648.86514851
+              },
+              "0.0150": {
+                "spread_per_side": 0.015,
+                "net_profit": -992791.88359764,
+                "account_return": -0.99279188,
+                "allocated_return": -2.20620419,
+                "trade_count": 367,
+                "win_rate": 0.00545,
+                "profit_factor": 0.000225,
+                "max_drawdown": 0.99283298,
+                "average_holding_hours": 3.03,
+                "buy_hold_profit": 23639.17552166,
+                "excess_vs_buy_hold": -1016431.0591193
+              }
+            }
+          },
+          "beats_buy_hold_at_45pct": false
+        },
+        "ETHUSD": {
+          "quality": {
+            "expected_bars": 25920,
+            "actual_bars": 25920,
+            "coverage": 1.0,
+            "duplicates": 86,
+            "max_gap_seconds": 300,
+            "passed": true
+          },
+          "first_bar": "2026-05-29T13:10:00+00:00",
+          "last_bar": "2026-08-27T13:05:00+00:00",
+          "allocations": {
+            "0.005": {
+              "0.0000": {
+                "spread_per_side": 0.0,
+                "net_profit": 993.15262989,
+                "account_return": 0.00099315,
+                "allocated_return": 0.19863053,
+                "trade_count": 331,
+                "win_rate": 0.36858,
+                "profit_factor": 1.212659,
+                "max_drawdown": 0.00059758,
+                "average_holding_hours": 3.29,
+                "buy_hold_profit": 1259.28990491,
+                "excess_vs_buy_hold": -266.13727502
+              },
+              "0.0025": {
+                "spread_per_side": 0.0025,
+                "net_profit": -7240.39112653,
+                "account_return": -0.00724039,
+                "allocated_return": -1.44807823,
+                "trade_count": 331,
+                "win_rate": 0.178248,
+                "profit_factor": 0.332566,
+                "max_drawdown": 0.00781538,
+                "average_holding_hours": 3.29,
+                "buy_hold_profit": 1228.07150135,
+                "excess_vs_buy_hold": -8468.46262788
+              },
+              "0.0050": {
+                "spread_per_side": 0.005,
+                "net_profit": -15365.95309606,
+                "account_return": -0.01536595,
+                "allocated_return": -3.07319062,
+                "trade_count": 331,
+                "win_rate": 0.093656,
+                "profit_factor": 0.140709,
+                "max_drawdown": 0.01544173,
+                "average_holding_hours": 3.29,
+                "buy_hold_profit": 1197.00840903,
+                "excess_vs_buy_hold": -16562.96150509
+              },
+              "0.0100": {
+                "spread_per_side": 0.01,
+                "net_profit": -31300.45894656,
+                "account_return": -0.03130046,
+                "allocated_return": -6.26009179,
+                "trade_count": 331,
+                "win_rate": 0.039275,
+                "profit_factor": 0.048239,
+                "max_drawdown": 0.03137427,
+                "average_holding_hours": 3.29,
+                "buy_hold_profit": 1135.34356611,
+                "excess_vs_buy_hold": -32435.80251267
+              },
+              "0.0150": {
+                "spread_per_side": 0.015,
+                "net_profit": -46824.64395121,
+                "account_return": -0.04682464,
+                "allocated_return": -9.36492879,
+                "trade_count": 331,
+                "win_rate": 0.024169,
+                "profit_factor": 0.021068,
+                "max_drawdown": 0.04689655,
+                "average_holding_hours": 3.29,
+                "buy_hold_profit": 1074.28626044,
+                "excess_vs_buy_hold": -47898.93021165
+              }
+            },
+            "0.450": {
+              "0.0000": {
+                "spread_per_side": 0.0,
+                "net_profit": 87375.41769243,
+                "account_return": 0.08737542,
+                "allocated_return": 0.19416759,
+                "trade_count": 331,
+                "win_rate": 0.36858,
+                "profit_factor": 1.210892,
+                "max_drawdown": 0.05288814,
+                "average_holding_hours": 3.29,
+                "buy_hold_profit": 113336.09146689,
+                "excess_vs_buy_hold": -25960.67377446
+              },
+              "0.0025": {
+                "spread_per_side": 0.0025,
+                "net_profit": -483239.65280683,
+                "account_return": -0.48323965,
+                "allocated_return": -1.0738659,
+                "trade_count": 331,
+                "win_rate": 0.178248,
+                "profit_factor": 0.309607,
+                "max_drawdown": 0.5080415,
+                "average_holding_hours": 3.29,
+                "buy_hold_profit": 110526.43515096,
+                "excess_vs_buy_hold": -593766.08795779
+              },
+              "0.0050": {
+                "spread_per_side": 0.005,
+                "net_profit": -753915.727768,
+                "account_return": -0.75391573,
+                "allocated_return": -1.67536828,
+                "trade_count": 331,
+                "win_rate": 0.093656,
+                "profit_factor": 0.124425,
+                "max_drawdown": 0.75561901,
+                "average_holding_hours": 3.29,
+                "buy_hold_profit": 107730.7572256,
+                "excess_vs_buy_hold": -861646.4849936
+              },
+              "0.0100": {
+                "spread_per_side": 0.01,
+                "net_profit": -943855.07432039,
+                "account_return": -0.94385507,
+                "allocated_return": -2.09745572,
+                "trade_count": 331,
+                "win_rate": 0.039275,
+                "profit_factor": 0.036866,
+                "max_drawdown": 0.94424155,
+                "average_holding_hours": 3.29,
+                "buy_hold_profit": 102180.92133838,
+                "excess_vs_buy_hold": -1046035.99565877
+              },
+              "0.0150": {
+                "spread_per_side": 0.015,
+                "net_profit": -987087.08285251,
+                "account_return": -0.98708708,
+                "allocated_return": -2.19352685,
+                "trade_count": 331,
+                "win_rate": 0.024169,
+                "profit_factor": 0.011338,
+                "max_drawdown": 0.98717548,
+                "average_holding_hours": 3.29,
+                "buy_hold_profit": 96685.76363994,
+                "excess_vs_buy_hold": -1083772.84649245
+              }
+            }
+          },
+          "beats_buy_hold_at_45pct": false
+        }
+      }
+    }
+  }
+}
