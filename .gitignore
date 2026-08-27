@@ -2,3 +2,4 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+webull_trade_sdk.log

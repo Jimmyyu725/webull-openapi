@@ -1,0 +1,4 @@
+APP_KEY = "us.f42997a06d270573fd24a67dc1c48db1"
+APP_SECRET = "77469e5c0419c29060e369a5768efe3c"
+REGION = "us"
+API_ENDPOINT = "api.sandbox.webull.com"
