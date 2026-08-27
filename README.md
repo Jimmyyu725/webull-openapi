@@ -208,6 +208,37 @@ python3 -m venv .venv
   --args '["OpenAPI Test"]' --yes
 ```
 
+## BTC/ETH 趋势策略
+
+策略只允许连接 Sandbox，覆盖 `BTCUSD` 和 `ETHUSD`：EMA20 上穿 EMA50 且 Heikin-Ashi 上涨时买入；EMA20 下穿 EMA50 或可执行价格较成本价亏损 3% 时全部卖出。每个标的最多一个多头仓位，每次最多使用当前 CRYPTO 账户购买力的 0.5%。
+
+先运行两套固定 90 天回测：
+
+```bash
+.venv/bin/python webull_cli.py crypto-strategy backtest --days 90 --source both
+```
+
+报告写入 `reports/crypto-backtest-90d.md` 和 `reports/crypto-backtest-90d.json`。Webull M120 回测按下一根 K 线开盘成交，并测试每边 0.5%、1% 和 1.5% 成本；Coinbase M5 只作高频诊断。只有 Webull M120 在每边 1% 成本下净收益为正、至少 3 笔交易且数据检查通过的标的会被放行。
+
+门槛通过后安装 30 天自动 Sandbox 模拟交易：
+
+```bash
+.venv/bin/python webull_cli.py crypto-strategy install --yes
+.venv/bin/python webull_cli.py crypto-strategy status
+.venv/bin/python webull_cli.py crypto-strategy pause
+.venv/bin/python webull_cli.py crypto-strategy resume
+.venv/bin/python webull_cli.py crypto-strategy report
+.venv/bin/python webull_cli.py crypto-strategy uninstall --yes
+```
+
+LaunchAgent 每 60 秒运行一次。止损每分钟检查，趋势信号仅在出现新的已闭合 M120 K 线时处理；市价单固定为 IOC，并使用确定性订单 ID 防止重复提交。连续 3 笔亏损会暂停新开仓 24 小时，但暂停、冷却或到期期间仍允许退出。30 天到期后会尝试市价平仓，确认无持仓及未完成订单后标记完成。电脑必须保持开机并登录；休眠期间不会追补旧入场信号。
+
+LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 JSONL 日志位于 `~/Library/Application Support/WebullCryptoSandbox/`，用于避开 macOS 对 `Documents` 后台访问的限制；回测缓存位于项目 `.cache/`。这些运行数据都不会提交 Git，30 天汇总写入 `reports/crypto-experiment.md`。可手动执行单轮诊断，但仍需显式确认：
+
+```bash
+.venv/bin/python webull_cli.py crypto-strategy run-once --yes
+```
+
 ## 测试
 
 ```bash

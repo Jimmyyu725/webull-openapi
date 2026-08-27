@@ -373,6 +373,65 @@ def cmd_stream_trades(api: WebullAPI, args: argparse.Namespace) -> int:
     return stream_trade_events(account_ids, args.duration)
 
 
+def cmd_crypto_backtest(api: WebullAPI, args: argparse.Namespace) -> int:
+    from crypto_strategy import run_backtests, save_report
+
+    report = run_backtests(api, days=args.days, source=args.source)
+    json_path, markdown_path = save_report(report)
+    return emit({
+        "deployment_symbols": report["deployment_symbols"],
+        "json_report": str(json_path),
+        "markdown_report": str(markdown_path),
+    })
+
+
+def cmd_crypto_run_once(api: WebullAPI, args: argparse.Namespace) -> int:
+    from crypto_runtime import run_once
+
+    return emit(run_once(api, confirmed=args.yes))
+
+
+def cmd_crypto_status(_: WebullAPI, __: argparse.Namespace) -> int:
+    from crypto_runtime import status
+
+    return emit(status())
+
+
+def cmd_crypto_pause(_: WebullAPI, __: argparse.Namespace) -> int:
+    from crypto_runtime import set_paused
+
+    return emit(set_paused(True))
+
+
+def cmd_crypto_resume(_: WebullAPI, __: argparse.Namespace) -> int:
+    from crypto_runtime import set_paused
+
+    return emit(set_paused(False))
+
+
+def cmd_crypto_report(_: WebullAPI, __: argparse.Namespace) -> int:
+    from crypto_runtime import runtime_report
+
+    return emit({"report": str(runtime_report())})
+
+
+def cmd_crypto_install(_: WebullAPI, args: argparse.Namespace) -> int:
+    if not args.yes:
+        raise ValueError("Installing the automatic Sandbox runner requires --yes")
+    from crypto_runtime import install_launch_agent
+
+    return emit({"launch_agent": str(install_launch_agent())})
+
+
+def cmd_crypto_uninstall(_: WebullAPI, args: argparse.Namespace) -> int:
+    if not args.yes:
+        raise ValueError("Removing the automatic Sandbox runner requires --yes")
+    from crypto_runtime import uninstall_launch_agent
+
+    uninstall_launch_agent()
+    return emit({"removed": True})
+
+
 def add_account_selector(parser: argparse.ArgumentParser, required: bool = False) -> None:
     group = parser.add_mutually_exclusive_group(required=required)
     group.add_argument("--account", help="Account ID, number, label, or class")
@@ -544,6 +603,28 @@ def build_parser() -> argparse.ArgumentParser:
     trades.add_argument("accounts", nargs="+", help="Account classes, numbers, labels, or IDs")
     trades.add_argument("--duration", type=int, help="Stop after N seconds; otherwise run until Ctrl+C")
     trades.set_defaults(handler=cmd_stream_trades)
+
+    crypto = sub.add_parser("crypto-strategy", help="Backtest and run the Sandbox crypto trend strategy")
+    crypto_sub = crypto.add_subparsers(dest="crypto_command", required=True)
+    crypto_backtest = crypto_sub.add_parser("backtest")
+    crypto_backtest.add_argument("--days", type=int, default=90, choices=(90,))
+    crypto_backtest.add_argument("--source", choices=("both", "webull", "coinbase"), default="both")
+    crypto_backtest.set_defaults(handler=cmd_crypto_backtest)
+    crypto_run = crypto_sub.add_parser("run-once")
+    crypto_run.add_argument("--yes", action="store_true")
+    crypto_run.set_defaults(handler=cmd_crypto_run_once)
+    for name, handler in (
+        ("status", cmd_crypto_status),
+        ("pause", cmd_crypto_pause),
+        ("resume", cmd_crypto_resume),
+        ("report", cmd_crypto_report),
+    ):
+        command = crypto_sub.add_parser(name)
+        command.set_defaults(handler=handler)
+    for name, handler in (("install", cmd_crypto_install), ("uninstall", cmd_crypto_uninstall)):
+        command = crypto_sub.add_parser(name)
+        command.add_argument("--yes", action="store_true")
+        command.set_defaults(handler=handler)
 
     return parser
 

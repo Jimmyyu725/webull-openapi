@@ -5,3 +5,5 @@ __pycache__/
 webull_trade_sdk.log
 webull_data_sdk.log
 webull_data_streaming_sdk.log
+.cache/
+.state/
