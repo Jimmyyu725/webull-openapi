@@ -168,10 +168,21 @@ def trade_day(
     *,
     equity: Decimal,
     cost_per_share: Decimal,
+    direction: str = "reversal",
 ) -> PressureTrade | None:
     signal = opening_signal(sessions)
     if signal is None:
         return None
+    if direction == "momentum":
+        signal = OpeningSignal(
+            short_symbol=signal.long_symbol,
+            long_symbol=signal.short_symbol,
+            short_pressure=signal.long_pressure,
+            long_pressure=signal.short_pressure,
+            dispersion=signal.dispersion,
+        )
+    elif direction != "reversal":
+        raise ValueError("Opening-pressure direction must be reversal or momentum")
     entry_index = 1
     short_session = sessions[signal.short_symbol]
     long_session = sessions[signal.long_symbol]
@@ -282,6 +293,8 @@ def backtest(
     *,
     cost_per_share: Decimal,
     include_details: bool = False,
+    direction: str = "reversal",
+    spy_dividends: dict[date, Decimal] = SPY_DIVIDENDS,
 ) -> dict[str, Any]:
     maps = {
         symbol: {session.day: session for session in sessions_by_symbol[symbol]}
@@ -299,10 +312,15 @@ def backtest(
         equity_before = equity
         trade = None
         if all(_normal(item) for item in current.values()) and _aligned(current):
-            trade = trade_day(current, equity=equity, cost_per_share=cost_per_share)
+            trade = trade_day(
+                current,
+                equity=equity,
+                cost_per_share=cost_per_share,
+                direction=direction,
+            )
         pnl = trade.pnl if trade else Decimal("0")
         spy = current[BENCHMARK]
-        dividend = SPY_DIVIDENDS.get(day, Decimal("0"))
+        dividend = spy_dividends.get(day, Decimal("0"))
         spy_return = (
             (spy.close + dividend) / previous_spy.close - Decimal("1")
             if previous_spy is not None else Decimal("0")
@@ -367,14 +385,18 @@ def backtest(
     return result
 
 
-def _buy_and_hold(spy_sessions: list[Session]) -> dict[str, float]:
+def _buy_and_hold(
+    spy_sessions: list[Session],
+    *,
+    spy_dividends: dict[date, Decimal] = SPY_DIVIDENDS,
+) -> dict[str, float]:
     if not spy_sessions:
         return {"net_profit": 0.0, "account_return": 0.0, "allocated_return": 0.0}
     quantity = int(
         (INITIAL_CAPITAL * Decimal("0.10") / spy_sessions[0].open).to_integral_value(rounding=ROUND_DOWN)
     )
     dividends = sum(
-        (amount for day, amount in SPY_DIVIDENDS.items() if spy_sessions[0].day <= day <= spy_sessions[-1].day),
+        (amount for day, amount in spy_dividends.items() if spy_sessions[0].day <= day <= spy_sessions[-1].day),
         Decimal("0"),
     )
     pnl = Decimal(quantity) * (

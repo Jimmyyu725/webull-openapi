@@ -126,6 +126,7 @@ def webull_stock_bars(
     now: Optional[datetime] = None,
     timespan: str = "M5",
     cache_dir: Path = CACHE_DIR,
+    require_cache: bool = False,
 ) -> dict[str, list[Bar]]:
     interval_seconds = {"M1": 60, "M5": 300}.get(timespan)
     if interval_seconds is None:
@@ -142,6 +143,8 @@ def webull_stock_bars(
     if cache_file.exists():
         payload = json.loads(cache_file.read_text(encoding="utf-8"))
         return {symbol: [_parse_bar(row) for row in payload[symbol]] for symbol in symbols}
+    if require_cache:
+        raise FileNotFoundError(f"Required stock-bar cache does not exist: {cache_file}")
 
     collected: dict[str, list[Bar]] = {symbol: [] for symbol in symbols}
     cursor = end

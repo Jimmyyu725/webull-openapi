@@ -55,6 +55,7 @@ from opening_pressure_strategy import (
     opening_signal,
     trade_day as trade_pressure_day,
 )
+from opening_momentum_strategy import run_opening_momentum_backtest
 from relative_value_strategy import (
     checkpoint_z_scores as pair_checkpoint_z_scores,
     trade_day as trade_pair_day,
@@ -613,6 +614,21 @@ class EquityOrbStrategyTests(unittest.TestCase):
         self.assertEqual(len(market.calls), 2)
         self.assertEqual(market.calls[1], 1767312000000)
 
+    def test_stock_bars_can_require_an_existing_cache(self):
+        market = mock.Mock()
+        api = SimpleNamespace(data=SimpleNamespace(market_data=market))
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(FileNotFoundError):
+                webull_stock_bars(
+                    api,
+                    symbols=("QQQ",),
+                    days=2,
+                    now=datetime(2026, 1, 3, tzinfo=timezone.utc),
+                    cache_dir=Path(directory),
+                    require_cache=True,
+                )
+        market.get_batch_history_bar.assert_not_called()
+
 
 class IntradayMomentumStrategyTests(unittest.TestCase):
     def _session(
@@ -931,6 +947,49 @@ class OpeningPressureStrategyTests(unittest.TestCase):
         self.assertEqual(trade.transaction_cost, Decimal("200.00"))
         self.assertEqual(trade.pnl, Decimal("-1700.00"))
         self.assertEqual((trade.exit_reason, trade.holding_minutes), ("stop", 5))
+
+    def test_opening_momentum_longs_winner_and_shorts_loser(self):
+        day = date(2022, 3, 2)
+        sessions = {
+            "XLE": self._session(
+                day,
+                first_close=Decimal("101"),
+                opens={1: Decimal("100")},
+                closes={77: Decimal("110")},
+            ),
+            "XLU": self._session(
+                day,
+                first_close=Decimal("99"),
+                opens={1: Decimal("100")},
+                closes={77: Decimal("90")},
+            ),
+        }
+        signal = OpeningSignal("XLE", "XLU", Decimal("0.01"), Decimal("-0.01"), Decimal("0.02"))
+        with mock.patch("opening_pressure_strategy.opening_signal", return_value=signal):
+            trade = trade_pressure_day(
+                sessions,
+                equity=Decimal("1000000"),
+                cost_per_share=Decimal("0.10"),
+                direction="momentum",
+            )
+        self.assertEqual((trade.long_symbol, trade.short_symbol), ("XLE", "XLU"))
+        self.assertEqual((trade.long_exit, trade.short_exit), (Decimal("110"), Decimal("90")))
+        self.assertEqual(trade.pnl, Decimal("9800.00"))
+
+    def test_failed_development_gate_preserves_holdout(self):
+        with (
+            mock.patch("opening_momentum_strategy.webull_stock_bars", return_value={}) as bars,
+            mock.patch("opening_momentum_strategy._stage", return_value={}),
+            mock.patch(
+                "opening_momentum_strategy.development_gate",
+                return_value={"passed": False, "checks": {}},
+            ),
+        ):
+            report = run_opening_momentum_backtest(mock.Mock())
+        self.assertEqual(bars.call_count, 1)
+        self.assertTrue(bars.call_args.kwargs["require_cache"])
+        self.assertFalse(report["holdout_requested"])
+        self.assertEqual(report["decision"], "REJECT_BEFORE_HOLDOUT")
 
 
 class FakeResponse:

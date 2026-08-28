@@ -328,11 +328,21 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 
 一年M5结果为`NO_TRADE`。236笔完整配对在零成本下净亏11,390.10美元；按每股每单1.5美分计入四次订单后净亏20,925.01美元，利润因子0.70、日Sharpe为-2.35，四个连续时段只有一个盈利。空头腿贡献-17,209.87美元，说明样本中的开盘赢家整体没有按假设充分反转。Webull数据还在2022-06-02缺少一根XLK五分钟K线，因此数据质量门槛也失败；研究不会进入M1复核、影子观察或Sandbox下单。
 
+## 行业ETF开盘价格压力动量筛选
+
+反转失败后，其相反方向只能作为新假设，不能在同一数据上冒充样本外胜利。`reports/opening-pressure-momentum-preregistration.md`因此采用两阶段纪律：先用已查看的2022–2023缓存检查“多开盘赢家、空开盘输家”能否覆盖成本；只有开发Gate全部通过，程序才允许请求尚未查看的2021–2022窗口。
+
+```bash
+.venv/bin/python webull_cli.py equity-strategy opening-pressure-momentum-backtest
+```
+
+阶段A结论为`REJECT_BEFORE_HOLDOUT`。236笔配对零成本赚7,369.63美元，但每股每单1.5美分后亏2,229.22美元，压力成本后亏11,829.93美元；多头赢家腿成本后亏5,422.78美元，四段只有两段盈利，最大回撤1.303%。程序没有请求或计算2021–2022保留窗口，也没有创建M1复核、影子任务或Sandbox订单。
+
 ## 测试
 
 ```bash
 .venv/bin/python -m unittest -v
-.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py relative_value_strategy.py opening_pressure_strategy.py
+.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py relative_value_strategy.py opening_pressure_strategy.py opening_momentum_strategy.py
 ```
 
 已知环境差异：Webull Sandbox 的 `/trade/calendar` 当前返回 404；当前模拟账户的批量下单开关未开放；交易事件 gRPC 已连接成功，但 Sandbox MQTT 行情流本次在 TCP 和 WebSocket 下均返回 `101 Internal error`。这些能力仍完整保留在 CLI 中，服务端开关或状态恢复后无需改代码。若遇到 `429 TOO_MANY_REQUESTS`，等待接口限流窗口恢复后重试。
