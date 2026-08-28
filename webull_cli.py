@@ -547,6 +547,19 @@ def cmd_opening_momentum_backtest(api: WebullAPI, _: argparse.Namespace) -> int:
     })
 
 
+def cmd_classic_sector_momentum(api: WebullAPI, _: argparse.Namespace) -> int:
+    from classic_sector_momentum import run_classic_sector_momentum, save_report
+
+    report = run_classic_sector_momentum(api)
+    json_path, markdown_path = save_report(report)
+    return emit({
+        "decision": report["decision"],
+        "holdout_requested": report["holdout_requested"],
+        "json_report": str(json_path),
+        "markdown_report": str(markdown_path),
+    })
+
+
 def cmd_crypto_run_once(api: WebullAPI, args: argparse.Namespace) -> int:
     from crypto_runtime import run_once
 
@@ -783,6 +796,8 @@ def build_parser() -> argparse.ArgumentParser:
     equity_pressure.set_defaults(handler=cmd_opening_pressure_backtest)
     equity_momentum = equity_sub.add_parser("opening-pressure-momentum-backtest")
     equity_momentum.set_defaults(handler=cmd_opening_momentum_backtest)
+    equity_sector = equity_sub.add_parser("classic-sector-momentum-backtest")
+    equity_sector.set_defaults(handler=cmd_classic_sector_momentum)
 
     crypto = sub.add_parser("crypto-strategy", help="Backtest and run the Sandbox crypto trend strategy")
     crypto_sub = crypto.add_subparsers(dest="crypto_command", required=True)

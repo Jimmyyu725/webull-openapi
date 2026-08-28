@@ -1,0 +1,85 @@
+{
+  "generated_at": "2026-08-28T14:56:22.732954+00:00",
+  "preregistration": "reports/classic-sector-momentum-preregistration.md",
+  "parameter_search": false,
+  "development_window": [
+    "2000-01-03",
+    "2014-12-31"
+  ],
+  "holdout_window": [
+    "2015-01-02",
+    "2026-08-27"
+  ],
+  "development": {
+    "quality": {
+      "common_sessions": 4024,
+      "first_session": "1999-01-04",
+      "last_session": "2014-12-31",
+      "date_set_mismatches": 1,
+      "duplicates": {
+        "XLB": 0,
+        "XLE": 0,
+        "XLF": 0,
+        "XLI": 0,
+        "XLK": 0,
+        "XLP": 0,
+        "XLU": 0,
+        "XLV": 0,
+        "XLY": 0,
+        "SPY": 0
+      },
+      "ordered": {
+        "XLB": true,
+        "XLE": true,
+        "XLF": true,
+        "XLI": true,
+        "XLK": true,
+        "XLP": true,
+        "XLU": true,
+        "XLV": true,
+        "XLY": true,
+        "SPY": true
+      },
+      "invalid_ohlc": [
+        "XLE:2000-05-01",
+        "XLE:2000-05-04",
+        "XLE:2000-05-11",
+        "XLE:2000-05-16",
+        "XLE:2000-05-26",
+        "XLE:2000-05-30",
+        "XLE:2000-06-01",
+        "XLE:2000-06-02",
+        "XLE:2000-06-06",
+        "XLE:2000-06-07",
+        "XLF:2000-05-01",
+        "XLF:2000-05-02",
+        "XLF:2000-05-04",
+        "XLF:2000-05-10",
+        "XLF:2000-05-11",
+        "XLF:2000-05-15",
+        "XLF:2000-05-17",
+        "XLF:2000-05-18",
+        "XLF:2000-05-30",
+        "XLF:2000-06-01",
+        "XLF:2000-06-02",
+        "XLF:2000-06-05",
+        "XLV:2002-01-08"
+      ],
+      "jump_flags": [],
+      "passed": false
+    },
+    "strategy": null,
+    "benchmarks": null,
+    "gate": {
+      "passed": false,
+      "checks": {
+        "data_quality": false
+      },
+      "positive_years": 0,
+      "positive_excess_years": 0
+    }
+  },
+  "holdout_requested": false,
+  "holdout": null,
+  "decision": "REJECT_BEFORE_HOLDOUT"
+}

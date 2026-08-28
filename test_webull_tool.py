@@ -8,6 +8,16 @@ from types import SimpleNamespace
 from unittest import mock
 
 from config import APP_KEY, APP_SECRET
+from classic_sector_momentum import (
+    DATA_SYMBOLS as CLASSIC_SECTOR_SYMBOLS,
+    DEVELOPMENT_FETCH_END,
+    SECTORS as CLASSIC_SECTORS,
+    ZERO_COST as CLASSIC_ZERO_COST,
+    _stage as classic_sector_stage,
+    _target_weights as classic_target_weights,
+    run_classic_sector_momentum,
+    simulate as simulate_classic_sector_momentum,
+)
 from crypto_strategy import (
     Bar,
     DataQuality,
@@ -629,6 +639,34 @@ class EquityOrbStrategyTests(unittest.TestCase):
                 )
         market.get_batch_history_bar.assert_not_called()
 
+    def test_stock_bars_support_forward_adjusted_daily_data(self):
+        market = mock.Mock()
+        market.get_batch_history_bar.return_value = FakeResponse(200, {
+            "result": [{
+                "symbol": "QQQ",
+                "result": [{
+                    "time": "2026-01-01T00:00:00.000+0000",
+                    "open": "100",
+                    "high": "101",
+                    "low": "99",
+                    "close": "100",
+                    "volume": "1",
+                }],
+            }],
+        })
+        api = SimpleNamespace(data=SimpleNamespace(market_data=market))
+        with tempfile.TemporaryDirectory() as directory:
+            bars = webull_stock_bars(
+                api,
+                symbols=("QQQ",),
+                days=2,
+                now=datetime(2026, 1, 3, tzinfo=timezone.utc),
+                timespan="D",
+                cache_dir=Path(directory),
+            )
+        self.assertEqual(len(bars["QQQ"]), 1)
+        self.assertEqual(market.get_batch_history_bar.call_args.args[2], "D")
+
 
 class IntradayMomentumStrategyTests(unittest.TestCase):
     def _session(
@@ -866,6 +904,92 @@ class RelativeValueStrategyTests(unittest.TestCase):
         self.assertEqual(trade.exit_reason, "eod")
         self.assertEqual(trade.holding_minutes, 360)
         self.assertEqual(trade.exit_time.astimezone().minute, 0)
+
+
+class ClassicSectorMomentumTests(unittest.TestCase):
+    def _bars(self) -> dict[str, list[Bar]]:
+        start = datetime(2019, 1, 1, tzinfo=timezone.utc)
+        slopes = {symbol: Decimal("0.01") for symbol in CLASSIC_SECTOR_SYMBOLS}
+        slopes.update({"XLB": Decimal("0.09"), "XLE": Decimal("0.08"), "XLF": Decimal("0.07")})
+        output = {symbol: [] for symbol in CLASSIC_SECTOR_SYMBOLS}
+        for index in range(450):
+            timestamp = start + timedelta(days=index)
+            for symbol in CLASSIC_SECTOR_SYMBOLS:
+                close = Decimal("100") + slopes[symbol] * Decimal(index)
+                open_price = Decimal("123") if symbol == "XLB" and timestamp.date() == date(2020, 2, 1) else close
+                if symbol == "XLY" and timestamp.date() == date(2020, 2, 1):
+                    close = Decimal("1000")
+                output[symbol].append(Bar(
+                    timestamp,
+                    open_price,
+                    max(open_price, close),
+                    min(open_price, close),
+                    close,
+                    Decimal("1000"),
+                ))
+        return output
+
+    def test_six_cohorts_allocate_thirty_percent(self):
+        cohorts = [
+            ("XLB", "XLE", "XLF"),
+            ("XLB", "XLE", "XLI"),
+            ("XLB", "XLK", "XLP"),
+            ("XLE", "XLF", "XLU"),
+            ("XLB", "XLV", "XLY"),
+            ("XLE", "XLF", "XLI"),
+        ]
+        weights = classic_target_weights("momentum", cohorts)
+        self.assertEqual(sum(weights.values(), Decimal("0")), Decimal("0.30"))
+        self.assertEqual(weights["XLB"], (Decimal("0.30") / Decimal("18")) * Decimal("4"))
+
+    def test_signal_uses_prior_closes_and_executes_at_current_open(self):
+        result = simulate_classic_sector_momentum(
+            self._bars(),
+            start_day=date(2020, 2, 1),
+            end_day=date(2020, 2, 1),
+            mode="momentum",
+            cost_model=CLASSIC_ZERO_COST,
+        )
+        selection = next(item for item in result["selection_history"] if item["day"] == "2020-02-01")
+        self.assertEqual(selection["winners"], ["XLB", "XLE", "XLF"])
+        xlb_buy = next(
+            item for item in result["orders"]
+            if item["symbol"] == "XLB" and item["quantity_delta"] > 0
+        )
+        self.assertEqual(xlb_buy["price"], 123.0)
+
+    def test_failed_development_gate_preserves_sector_holdout(self):
+        with (
+            mock.patch("classic_sector_momentum.webull_stock_bars", return_value={}) as bars,
+            mock.patch("classic_sector_momentum._stage", return_value={}),
+            mock.patch(
+                "classic_sector_momentum._gate",
+                return_value={"passed": False, "checks": {}},
+            ),
+        ):
+            report = run_classic_sector_momentum(mock.Mock())
+        self.assertEqual(bars.call_count, 1)
+        self.assertEqual(bars.call_args.kwargs["now"], DEVELOPMENT_FETCH_END)
+        self.assertFalse(report["holdout_requested"])
+        self.assertEqual(report["decision"], "REJECT_BEFORE_HOLDOUT")
+
+    def test_failed_data_quality_stops_before_performance_calculation(self):
+        with (
+            mock.patch(
+                "classic_sector_momentum._aligned",
+                return_value=({}, {"passed": False}),
+            ),
+            mock.patch("classic_sector_momentum.simulate") as simulation,
+        ):
+            stage = classic_sector_stage(
+                {},
+                start_day=date(2000, 1, 3),
+                end_day=date(2014, 12, 31),
+                minimum_sessions=3750,
+            )
+        self.assertIsNone(stage["strategy"])
+        self.assertIsNone(stage["benchmarks"])
+        simulation.assert_not_called()
 
 
 class OpeningPressureStrategyTests(unittest.TestCase):

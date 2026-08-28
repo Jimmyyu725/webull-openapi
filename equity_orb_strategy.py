@@ -128,9 +128,9 @@ def webull_stock_bars(
     cache_dir: Path = CACHE_DIR,
     require_cache: bool = False,
 ) -> dict[str, list[Bar]]:
-    interval_seconds = {"M1": 60, "M5": 300}.get(timespan)
+    interval_seconds = {"M1": 60, "M5": 300, "D": 86400}.get(timespan)
     if interval_seconds is None:
-        raise ValueError("Stock ORB data supports only M1 or M5")
+        raise ValueError("Stock data supports only M1, M5, or D")
     symbols = tuple(symbols)
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     end = floor_time(now, interval_seconds)

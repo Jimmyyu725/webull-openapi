@@ -338,11 +338,21 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 
 阶段A结论为`REJECT_BEFORE_HOLDOUT`。236笔配对零成本赚7,369.63美元，但每股每单1.5美分后亏2,229.22美元，压力成本后亏11,829.93美元；多头赢家腿成本后亏5,422.78美元，四段只有两段盈利，最大回撤1.303%。程序没有请求或计算2021–2022保留窗口，也没有创建M1复核、影子任务或Sandbox订单。
 
+## 经典行业ETF月度动量研究
+
+纽约联储2026年的复核显示近年的无条件隔夜漂移已趋近于零，因此该候选在写代码前被淘汰。随后预注册了换手更低的经典行业动量：固定九只1998年已存在的Select Sector SPDR，以126个共同交易日收益选前三名、维护六个月重叠队列，总账户敞口固定30%，按月调仓。完整规则、开发/保留隔离、成本、基准及门槛见`reports/classic-sector-momentum-preregistration.md`。
+
+```bash
+.venv/bin/python webull_cli.py equity-strategy classic-sector-momentum-backtest
+```
+
+开发期结论为`REJECT_BEFORE_HOLDOUT`。Webull前复权日线在固定窗口中有一个跨标的日期缺口，并有多根`low <= open/close <= high`关系不成立的历史K线；其中异常直接影响调仓开盘价。预注册规定数据质量失败必须立即停止，因此程序不计算这些脏数据上的策略收益，也没有请求2015年后的保留样本、启动影子观察或提交Sandbox订单。
+
 ## 测试
 
 ```bash
 .venv/bin/python -m unittest -v
-.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py relative_value_strategy.py opening_pressure_strategy.py opening_momentum_strategy.py
+.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py relative_value_strategy.py opening_pressure_strategy.py opening_momentum_strategy.py classic_sector_momentum.py
 ```
 
 已知环境差异：Webull Sandbox 的 `/trade/calendar` 当前返回 404；当前模拟账户的批量下单开关未开放；交易事件 gRPC 已连接成功，但 Sandbox MQTT 行情流本次在 TCP 和 WebSocket 下均返回 `101 Internal error`。这些能力仍完整保留在 CLI 中，服务端开关或状态恢复后无需改代码。若遇到 `429 TOO_MANY_REQUESTS`，等待接口限流窗口恢复后重试。
