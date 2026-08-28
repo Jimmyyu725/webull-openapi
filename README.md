@@ -365,6 +365,7 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 ```bash
 .venv/bin/python webull_cli.py equity-strategy forward-record-once
 .venv/bin/python webull_cli.py equity-strategy forward-record-status
+.venv/bin/python webull_cli.py equity-strategy forward-coverage-status
 .venv/bin/python webull_cli.py equity-strategy forward-tca-status
 .venv/bin/python webull_cli.py equity-strategy desk-status
 .venv/bin/python webull_cli.py equity-strategy research-ledger-status
@@ -375,6 +376,8 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 ```
 
 本地数据、最小运行副本和独立虚拟环境保存在`~/Library/Application Support/WebullEquityForward/`，不会提交Git。独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`；达到20个完整交易日后停止请求新行情。
+
+`forward-coverage-status`按普通常规时段的390个预期分钟逐日检查缺口。只有`SPY`、`QQQ`和`AAPL`在同一分钟都存在有效闭合K线，该分钟才计入完整日；三者各自有371条但时间错位时仍判定为不完整。命令只读诊断现有SQLite，不回填数据，也不触发订单。
 
 `forward-tca-status`只连接同一交易日中恰好相隔1、5和30分钟的有效NBBO，报告半点差、双边报价成本、中间价波动以及成本加2个基点后的最低毛优势门槛。它不生成信号或订单；固定计算见`reports/equity-forward-tca-protocol.md`。数据、研究、影子观察和极小Sandbox订单之间的授权阶梯及组合风险上限见`reports/institutional-sandbox-trading-mandate.md`。
 

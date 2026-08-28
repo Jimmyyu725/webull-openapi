@@ -591,6 +591,12 @@ def cmd_forward_record_status(_: WebullAPI, __: argparse.Namespace) -> int:
     return emit(status())
 
 
+def cmd_forward_coverage_status(_: WebullAPI, __: argparse.Namespace) -> int:
+    from equity_forward_recorder import session_coverage
+
+    return emit(session_coverage())
+
+
 def cmd_forward_tca_status(_: WebullAPI, __: argparse.Namespace) -> int:
     from equity_forward_recorder import execution_diagnostics
 
@@ -892,6 +898,8 @@ def build_parser() -> argparse.ArgumentParser:
     equity_forward_once.set_defaults(handler=cmd_forward_record_once)
     equity_forward_status = equity_sub.add_parser("forward-record-status")
     equity_forward_status.set_defaults(handler=cmd_forward_record_status)
+    equity_forward_coverage = equity_sub.add_parser("forward-coverage-status")
+    equity_forward_coverage.set_defaults(handler=cmd_forward_coverage_status)
     equity_forward_tca = equity_sub.add_parser("forward-tca-status")
     equity_forward_tca.set_defaults(handler=cmd_forward_tca_status)
     equity_desk = equity_sub.add_parser("desk-status")

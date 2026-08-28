@@ -9,7 +9,7 @@ import sqlite3
 import subprocess
 import sys
 from contextlib import closing, contextmanager
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from statistics import median
@@ -230,17 +230,111 @@ def _complete_sessions(connection: sqlite3.Connection) -> list[str]:
             """
             SELECT session_day
             FROM (
-                SELECT session_day, symbol, COUNT(*) AS samples
+                SELECT session_day, bar_time
                 FROM samples
-                GROUP BY session_day, symbol
+                WHERE valid_bar = 1 AND symbol IN (?, ?, ?)
+                GROUP BY session_day, bar_time
+                HAVING COUNT(DISTINCT symbol) = ?
             )
             GROUP BY session_day
-            HAVING COUNT(*) = ? AND MIN(samples) >= ?
+            HAVING COUNT(*) >= ?
             ORDER BY session_day
             """,
-            (len(SYMBOLS), MIN_SAMPLES_PER_SESSION),
+            (*SYMBOLS, len(SYMBOLS), MIN_SAMPLES_PER_SESSION),
         )
     ]
+
+
+def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
+    """Report aligned valid RTH minutes without backfilling or creating orders."""
+    output: dict[str, Any] = {
+        "status": "not_started",
+        "symbols": list(SYMBOLS),
+        "expected_regular_minutes": 390,
+        "protocol_minimum_aligned_minutes": MIN_SAMPLES_PER_SESSION,
+        "complete_session_count": 0,
+        "sessions": [],
+        "database": str(database),
+        "orders_enabled": False,
+    }
+    if not database.exists():
+        return output
+
+    with closing(sqlite3.connect(database)) as connection:
+        rows = connection.execute(
+            """
+            SELECT symbol, session_day, bar_time, valid_bar, valid_quote
+            FROM samples
+            WHERE symbol IN (?, ?, ?)
+            ORDER BY session_day, bar_time, symbol
+            """,
+            SYMBOLS,
+        ).fetchall()
+
+    grouped: dict[str, dict[str, dict[str, set[datetime]]]] = {}
+    for symbol, session_day, bar_time, valid_bar, valid_quote in rows:
+        values = grouped.setdefault(
+            session_day,
+            {
+                item: {"observed": set(), "valid_bar": set(), "valid_quote": set()}
+                for item in SYMBOLS
+            },
+        )[symbol]
+        timestamp = parse_time(bar_time).astimezone(timezone.utc)
+        values["observed"].add(timestamp)
+        if valid_bar:
+            values["valid_bar"].add(timestamp)
+        if valid_quote:
+            values["valid_quote"].add(timestamp)
+
+    sessions: list[dict[str, Any]] = []
+    for session_day in sorted(grouped):
+        day = date.fromisoformat(session_day)
+        start = datetime(day.year, day.month, day.day, 9, 30, tzinfo=EASTERN)
+        expected = {
+            (start + timedelta(minutes=index)).astimezone(timezone.utc)
+            for index in range(390)
+        }
+        symbol_output: dict[str, Any] = {}
+        aligned = set(expected)
+        for symbol in SYMBOLS:
+            values = grouped[session_day][symbol]
+            observed = values["observed"] & expected
+            valid_bars = values["valid_bar"] & expected
+            valid_quotes = values["valid_quote"] & expected
+            missing = sorted(expected - valid_bars)
+            aligned &= valid_bars
+            symbol_output[symbol] = {
+                "observed_minutes": len(observed),
+                "valid_bar_minutes": len(valid_bars),
+                "valid_quote_minutes": len(valid_quotes),
+                "first_bar": min(observed).isoformat() if observed else None,
+                "last_bar": max(observed).isoformat() if observed else None,
+                "missing_expected_minutes": len(missing),
+                "missing_examples_et": [
+                    value.astimezone(EASTERN).strftime("%H:%M") for value in missing[:10]
+                ],
+            }
+        aligned_missing = sorted(expected - aligned)
+        sessions.append({
+            "session_day": session_day,
+            "complete": len(aligned) >= MIN_SAMPLES_PER_SESSION,
+            "aligned_valid_minutes": len(aligned),
+            "aligned_missing_minutes": len(aligned_missing),
+            "aligned_coverage": round(len(aligned) / len(expected), 6),
+            "aligned_missing_examples_et": [
+                value.astimezone(EASTERN).strftime("%H:%M")
+                for value in aligned_missing[:10]
+            ],
+            "symbols": symbol_output,
+        })
+
+    output.update({
+        "status": "recording" if sessions else "not_started",
+        "complete_session_count": sum(item["complete"] for item in sessions),
+        "sessions": sessions,
+    })
+    return output
 
 
 def _percentile(values: list[float], fraction: float) -> Optional[float]:

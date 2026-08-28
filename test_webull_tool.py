@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import tempfile
 import unittest
 import urllib.parse
@@ -50,11 +51,15 @@ from equity_orb_strategy import (
     webull_stock_bars,
 )
 from equity_forward_recorder import (
+    EASTERN as EQUITY_FORWARD_EASTERN,
+    INSERT_SAMPLE as EQUITY_FORWARD_INSERT_SAMPLE,
     LAUNCH_LABEL as EQUITY_FORWARD_LAUNCH_LABEL,
+    SCHEMA as EQUITY_FORWARD_SCHEMA,
     SYMBOLS as EQUITY_FORWARD_SYMBOLS,
     _launch_payload as equity_forward_launch_payload,
     execution_diagnostics as equity_execution_diagnostics,
     record_once as record_equity_forward_once,
+    session_coverage as equity_session_coverage,
     status as equity_forward_status,
 )
 from equity_desk import (
@@ -596,6 +601,80 @@ class EquityForwardRecorderTests(unittest.TestCase):
         self.assertNotIn(".trade.", source)
         self.assertNotIn("place_order", source)
         self.assertNotIn("cancel_order", source)
+
+    def test_complete_session_requires_aligned_valid_minutes(self):
+        day = date(2026, 8, 28)
+        start = datetime(day.year, day.month, day.day, 9, 30, tzinfo=EQUITY_FORWARD_EASTERN)
+        rows = []
+        timestamps = []
+        for index in range(390):
+            bar_time = (start + timedelta(minutes=index)).astimezone(timezone.utc)
+            timestamps.append(bar_time.isoformat())
+            for symbol in EQUITY_FORWARD_SYMBOLS:
+                rows.append((
+                    symbol,
+                    bar_time.isoformat(),
+                    (bar_time + timedelta(minutes=1)).isoformat(),
+                    day.isoformat(),
+                    "RTH",
+                    100.0,
+                    101.0,
+                    99.0,
+                    100.0,
+                    1000.0,
+                    100.0,
+                    99.99,
+                    100.01,
+                    100.0,
+                    100.0,
+                    bar_time.isoformat(),
+                    100.0,
+                    2.0,
+                    1.0,
+                    1,
+                    1,
+                ))
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            with sqlite3.connect(database) as connection:
+                connection.executescript(EQUITY_FORWARD_SCHEMA)
+                connection.executemany(EQUITY_FORWARD_INSERT_SAMPLE, rows)
+            initial = equity_session_coverage(database)
+            self.assertTrue(initial["sessions"][0]["complete"])
+            self.assertEqual(equity_forward_status(database)["complete_session_count"], 1)
+
+            with sqlite3.connect(database) as connection:
+                connection.executemany(
+                    "UPDATE samples SET valid_bar = 0 WHERE symbol = 'AAPL' AND bar_time = ?",
+                    [(timestamp,) for timestamp in timestamps[:20]],
+                )
+            invalid = equity_session_coverage(database)
+            self.assertEqual(invalid["sessions"][0]["aligned_valid_minutes"], 370)
+            self.assertFalse(invalid["sessions"][0]["complete"])
+            self.assertEqual(equity_forward_status(database)["complete_session_count"], 0)
+
+            with sqlite3.connect(database) as connection:
+                connection.execute("UPDATE samples SET valid_bar = 1")
+                for symbol, removed in zip(
+                    EQUITY_FORWARD_SYMBOLS,
+                    (timestamps[0:19], timestamps[19:38], timestamps[38:57]),
+                ):
+                    connection.executemany(
+                        "DELETE FROM samples WHERE symbol = ? AND bar_time = ?",
+                        [(symbol, timestamp) for timestamp in removed],
+                    )
+            coverage = equity_session_coverage(database)
+            session = coverage["sessions"][0]
+            current = equity_forward_status(database)
+
+        self.assertTrue(all(
+            item["observed_minutes"] == 371 for item in session["symbols"].values()
+        ))
+        self.assertEqual(session["aligned_valid_minutes"], 333)
+        self.assertFalse(session["complete"])
+        self.assertEqual(coverage["complete_session_count"], 0)
+        self.assertEqual(current["complete_session_count"], 0)
+        self.assertFalse(coverage["orders_enabled"])
 
     def test_forward_tca_uses_exact_same_session_horizons(self):
         start = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)

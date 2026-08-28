@@ -14,6 +14,8 @@ Webull Sandbox 的股票实时快照与一分钟K线，是否足以支持以后�
 - 记录目标为20个完整普通交易日。某日每个标的至少371个唯一分钟样本，才算完整交易日；半日市不计入20日目标。
 - 数据仅写入`~/Library/Application Support/WebullEquityForward/`，不提交Git。
 
+完整日实现澄清（2026-08-29）：上述每标的门槛按更严格的共同分钟执行。普通常规时段以09:30至15:59的390个预期分钟为基准；只有三个标的在同一分钟都存在通过质量检查的闭合K线，该分钟才计数。共同有效分钟至少371个才算完整日。三个标的各自达到371条但缺失分钟彼此错位时不放行；这项澄清不降低冻结协议的任何门槛。
+
 ## 每条记录
 
 - 本地请求时间、标的、闭合K线时间和Webull交易时段标签。
@@ -39,6 +41,7 @@ Gate通过只说明前向数据可用于后续研究，不说明任何策略有�
 - `forward-record-once`执行一次只读采样。
 - 独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`，与现有加密任务隔离。
 - `forward-record-status`只读汇总当前样本和质量指标。
+- `forward-coverage-status`逐日列出每标的和三标的共同有效分钟、缺口数及最多10个缺口示例。
 - `forward-record-install --yes`与`forward-record-uninstall --yes`安装或移除本地每分钟任务。
 - 达到20个完整交易日后自动停止写入；用户可随时卸载。
 
