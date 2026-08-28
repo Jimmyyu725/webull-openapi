@@ -39,9 +39,9 @@ Gate通过只说明前向数据可用于后续研究，不说明任何策略有�
 ## 运行与停止
 
 - `forward-record-once`执行一次只读采样。
-- 独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`，与现有加密任务隔离。
+- 独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`，与现有加密任务隔离；按墙钟每个整分钟触发，API执行时间不得累积为下一次触发的调度漂移。
 - `forward-record-status`只读汇总当前样本和质量指标。
-- `forward-coverage-status`逐日列出每标的和三标的共同有效分钟、缺口数及最多10个缺口示例。
+- `forward-coverage-status`逐日列出每标的和三标的共同有效分钟、安装前/尾部缺口、内部采集缺口、最长连续内部缺口及最多10个缺口示例。
 - `forward-record-install --yes`与`forward-record-uninstall --yes`安装或移除本地每分钟任务。
 - 达到20个完整交易日后自动停止写入；用户可随时卸载。
 

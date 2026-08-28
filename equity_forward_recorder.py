@@ -316,15 +316,38 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                 ],
             }
         aligned_missing = sorted(expected - aligned)
+        internal_missing: list[datetime] = []
+        maximum_internal_gap = 0
+        if aligned:
+            first_aligned = min(aligned)
+            last_aligned = max(aligned)
+            span_minutes = int((last_aligned - first_aligned).total_seconds() // 60) + 1
+            internal_expected = {
+                first_aligned + timedelta(minutes=index) for index in range(span_minutes)
+            }
+            internal_missing = sorted(internal_expected - aligned)
+            run = 0
+            previous: Optional[datetime] = None
+            for value in internal_missing:
+                run = run + 1 if previous and value - previous == timedelta(minutes=1) else 1
+                maximum_internal_gap = max(maximum_internal_gap, run)
+                previous = value
         sessions.append({
             "session_day": session_day,
             "complete": len(aligned) >= MIN_SAMPLES_PER_SESSION,
+            "internal_continuity": "PASS" if not internal_missing else "FAIL",
             "aligned_valid_minutes": len(aligned),
             "aligned_missing_minutes": len(aligned_missing),
             "aligned_coverage": round(len(aligned) / len(expected), 6),
             "aligned_missing_examples_et": [
                 value.astimezone(EASTERN).strftime("%H:%M")
                 for value in aligned_missing[:10]
+            ],
+            "internal_missing_minutes": len(internal_missing),
+            "maximum_internal_gap_minutes": maximum_internal_gap,
+            "internal_missing_examples_et": [
+                value.astimezone(EASTERN).strftime("%H:%M")
+                for value in internal_missing[:10]
             ],
             "symbols": symbol_output,
         })
@@ -558,7 +581,7 @@ def _launch_payload() -> dict[str, Any]:
         ],
         "WorkingDirectory": str(DEPLOY_DIR),
         "RunAtLoad": True,
-        "StartInterval": 60,
+        "StartCalendarInterval": [{"Minute": minute} for minute in range(60)],
         "ProcessType": "Background",
         "StandardOutPath": str(APP_DIR / "launchd.out.log"),
         "StandardErrorPath": str(APP_DIR / "launchd.err.log"),

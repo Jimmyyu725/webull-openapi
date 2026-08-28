@@ -595,7 +595,11 @@ class EquityForwardRecorderTests(unittest.TestCase):
         command = " ".join(payload["ProgramArguments"])
         self.assertIn("forward-record-once", command)
         self.assertNotIn("order", command)
-        self.assertEqual(payload["StartInterval"], 60)
+        self.assertNotIn("StartInterval", payload)
+        self.assertEqual(
+            {item["Minute"] for item in payload["StartCalendarInterval"]},
+            set(range(60)),
+        )
 
     def test_forward_recorder_source_has_no_trade_mutation(self):
         source = (Path(__file__).parent / "equity_forward_recorder.py").read_text(encoding="utf-8")
@@ -656,6 +660,20 @@ class EquityForwardRecorderTests(unittest.TestCase):
 
             with sqlite3.connect(database) as connection:
                 connection.execute("UPDATE samples SET valid_bar = 1")
+                connection.executemany(
+                    "DELETE FROM samples WHERE bar_time = ?",
+                    [(timestamp,) for timestamp in timestamps[200:202]],
+                )
+            internal_gap = equity_session_coverage(database)["sessions"][0]
+            self.assertEqual(internal_gap["internal_continuity"], "FAIL")
+            self.assertEqual(internal_gap["internal_missing_minutes"], 2)
+            self.assertEqual(internal_gap["maximum_internal_gap_minutes"], 2)
+
+            with sqlite3.connect(database) as connection:
+                connection.executemany(
+                    EQUITY_FORWARD_INSERT_SAMPLE,
+                    [row for row in rows if row[1] in timestamps[200:202]],
+                )
                 for symbol, removed in zip(
                     EQUITY_FORWARD_SYMBOLS,
                     (timestamps[0:19], timestamps[19:38], timestamps[38:57]),
