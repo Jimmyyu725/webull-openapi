@@ -462,6 +462,18 @@ def cmd_daytrade_uninstall(_: WebullAPI, args: argparse.Namespace) -> int:
     return emit({"removed": True})
 
 
+def cmd_equity_orb_backtest(api: WebullAPI, args: argparse.Namespace) -> int:
+    from equity_orb_strategy import run_orb_backtest, save_report
+
+    report = run_orb_backtest(api, days=args.days)
+    json_path, markdown_path = save_report(report)
+    return emit({
+        "decision": report["professional_gate"]["decision"],
+        "json_report": str(json_path),
+        "markdown_report": str(markdown_path),
+    })
+
+
 def cmd_crypto_run_once(api: WebullAPI, args: argparse.Namespace) -> int:
     from crypto_runtime import run_once
 
@@ -680,6 +692,12 @@ def build_parser() -> argparse.ArgumentParser:
     trades.add_argument("accounts", nargs="+", help="Account classes, numbers, labels, or IDs")
     trades.add_argument("--duration", type=int, help="Stop after N seconds; otherwise run until Ctrl+C")
     trades.set_defaults(handler=cmd_stream_trades)
+
+    equity = sub.add_parser("equity-strategy", help="Research preregistered Sandbox equity strategies")
+    equity_sub = equity.add_subparsers(dest="equity_command", required=True)
+    equity_orb = equity_sub.add_parser("orb-backtest")
+    equity_orb.add_argument("--days", type=int, default=90, choices=(90,))
+    equity_orb.set_defaults(handler=cmd_equity_orb_backtest)
 
     crypto = sub.add_parser("crypto-strategy", help="Backtest and run the Sandbox crypto trend strategy")
     crypto_sub = crypto.add_subparsers(dest="crypto_command", required=True)

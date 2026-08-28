@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 import urllib.parse
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,6 +27,15 @@ from daytrader_strategy import (
     allocation_for_risk,
     backtest_daytrader,
     daytrade_signals,
+)
+from equity_orb_strategy import (
+    BASE_COST as ORB_BASE_COST,
+    Session,
+    _features as orb_features,
+    _quantity as orb_quantity,
+    _trade_session as trade_orb_session,
+    build_sessions as build_stock_sessions,
+    webull_stock_bars,
 )
 from webull_api import is_mutating_call, redact_secrets
 from webull_cli import replace_account_placeholder
@@ -431,6 +440,91 @@ class CryptoStrategyTests(unittest.TestCase):
         gate = _professional_gate(dataset)
         self.assertFalse(gate["passed"])
         self.assertFalse(gate["checks"]["oos_beats_buy_and_hold"])
+
+
+class EquityOrbStrategyTests(unittest.TestCase):
+    def _session(self, day: date, opening_volume: int, *, bars: int = 78) -> Session:
+        start = datetime(day.year, day.month, day.day, 14, 30, tzinfo=timezone.utc)
+        values = tuple(
+            Bar(
+                start + timedelta(minutes=5 * index),
+                Decimal("100"),
+                Decimal("101"),
+                Decimal("99"),
+                Decimal("100"),
+                Decimal(opening_volume if index == 0 else 1000),
+            )
+            for index in range(bars)
+        )
+        return Session(day, values)
+
+    def test_orb_features_use_only_prior_opening_volume(self):
+        sessions = [
+            self._session(date(2026, 1, 1) + timedelta(days=index), 100 if index < 14 else 10000)
+            for index in range(15)
+        ]
+        feature = orb_features(sessions)[sessions[-1].day]
+        self.assertEqual(feature["average_opening_volume"], Decimal("100"))
+
+    def test_orb_same_bar_entry_and_stop_uses_conservative_stop(self):
+        opening = Bar(
+            datetime(2026, 1, 5, 14, 30, tzinfo=timezone.utc),
+            Decimal("100"), Decimal("102"), Decimal("99"), Decimal("101"), Decimal("1000"),
+        )
+        breakout = Bar(
+            opening.time + timedelta(minutes=5),
+            Decimal("101"), Decimal("103"), Decimal("100.9"), Decimal("102"), Decimal("1000"),
+        )
+        close = Bar(
+            opening.time + timedelta(hours=6, minutes=25),
+            Decimal("102"), Decimal("102"), Decimal("102"), Decimal("102"), Decimal("1000"),
+        )
+        trade = trade_orb_session(
+            "AAPL", Session(date(2026, 1, 5), (opening, breakout, close)),
+            Decimal("2"), Decimal("10"), Decimal("1000000"), Decimal("0"),
+        )
+        self.assertEqual(trade.reason, "stop")
+        self.assertEqual(trade.entry_price, Decimal("102"))
+        self.assertEqual(trade.exit_price, Decimal("101"))
+        self.assertEqual(trade.r_multiple, Decimal("-1"))
+
+    def test_orb_quantity_respects_risk_and_notional_caps(self):
+        self.assertEqual(orb_quantity(Decimal("1000000"), Decimal("100"), Decimal("1")), 500)
+        self.assertEqual(orb_quantity(Decimal("1000000"), Decimal("100"), Decimal("0.01")), 1000)
+
+    def test_stock_sessions_accept_complete_rth_and_drop_partial_boundary(self):
+        complete = self._session(date(2026, 1, 5), 100).bars
+        partial = self._session(date(2026, 1, 6), 100, bars=2).bars
+        sessions, quality = build_stock_sessions([*complete, *partial])
+        self.assertEqual(len(sessions), 1)
+        self.assertEqual(quality.dropped_boundary_sessions, 1)
+
+    def test_webull_stock_bars_uses_bounded_paginated_request(self):
+        class MarketData:
+            def __init__(self):
+                self.calls = []
+
+            def get_batch_history_bar(self, symbols, category, timespan, count, **kwargs):
+                self.calls.append((symbols, category, timespan, count, kwargs))
+                day = "2026-01-02" if len(self.calls) == 1 else "2026-01-01"
+                rows = [{"time": f"{day}T00:00:00.000+0000", "open": "100", "high": "101", "low": "99", "close": "100", "volume": "1"}]
+                return FakeResponse(200, {"result": [{"symbol": "QQQ", "result": rows}]})
+
+        market = MarketData()
+        api = SimpleNamespace(data=SimpleNamespace(market_data=market))
+        with tempfile.TemporaryDirectory() as directory:
+            bars = webull_stock_bars(
+                api,
+                symbols=("QQQ",),
+                days=2,
+                now=datetime(2026, 1, 3, tzinfo=timezone.utc),
+                cache_dir=Path(directory),
+            )
+        self.assertEqual(len(market.calls), 2)
+        self.assertEqual(market.calls[0][1:4], ("US_STOCK", "M5", "1200"))
+        self.assertEqual(market.calls[1][4]["end_time"], 1767312000000)
+        self.assertEqual(len(bars["QQQ"]), 2)
+        self.assertEqual(ORB_BASE_COST, Decimal("0.0005"))
 
 
 class FakeResponse:

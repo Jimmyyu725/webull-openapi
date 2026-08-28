@@ -273,11 +273,21 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 .venv/bin/python webull_cli.py crypto-strategy daytrade-run --yes
 ```
 
+## 股票ORB预注册研究
+
+加密货币日内策略未通过成本与样本外门槛后，下一项研究转向流动性更高、交易摩擦更低的美股。规则、股票池、风险和放行条件已经在查看回测结果之前冻结于`reports/equity-orb-preregistration.md`，避免事后调参。
+
+候选策略每天从10只固定高流动性股票中选择第一根五分钟K线相对成交量最高的一个标的，按第一根K线方向等待突破，以ATR的10%止损并在收盘前退出。每边按5个基点估计执行成本、10个基点压力测试；单笔账户风险0.05%，名义仓位不超过10%。本阶段只生成90天研究报告；即使通过，也只能进入20个交易日的无下单前向观察，不会直接启动Sandbox订单。
+
+```bash
+.venv/bin/python webull_cli.py equity-strategy orb-backtest --days 90
+```
+
 ## 测试
 
 ```bash
 .venv/bin/python -m unittest -v
-.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py
+.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py
 ```
 
 已知环境差异：Webull Sandbox 的 `/trade/calendar` 当前返回 404；当前模拟账户的批量下单开关未开放；交易事件 gRPC 已连接成功，但 Sandbox MQTT 行情流本次在 TCP 和 WebSocket 下均返回 `101 Internal error`。这些能力仍完整保留在 CLI 中，服务端开关或状态恢复后无需改代码。若遇到 `429 TOO_MANY_REQUESTS`，等待接口限流窗口恢复后重试。
