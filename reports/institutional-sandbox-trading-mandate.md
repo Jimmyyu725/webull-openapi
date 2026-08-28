@@ -45,6 +45,7 @@
 - 每个交易日首次评估信号前必须运行只读`desk-status`；账户不可读、存在未知挂单或目标标的存在未托管仓位时，自动交易保持`BLOCKED`。
 - 自2026-08-31起，每个计划交易日的首次盘前检查和盘后复盘必须写入幂等`desk-journal`；提前收盘按NYSE计划收盘后2分钟开始判定盘后记录，休市日不要求这两个阶段。任一必需阶段缺失或日志不可读时，任何自动交易授权保持`BLOCKED`。
 - `desk-status`必须读取与写入任务相同的`desk-journal`和同一个评估时钟；日志损坏与必需阶段缺失必须分别产生`desk_journal_unreadable`与`desk_journal_incomplete`阻断理由，下一门槛固定为`repair_desk_journal`。
+- 冻结NYSE日历范围外的日期不得被当成休市日或无要求日期；`desk-journal-status`必须返回首个不支持日期与累计数量，`desk-status`必须以`desk_journal_calendar_unsupported`阻断自动交易，并把下一门槛固定为`extend_nyse_calendar`。
 - 每笔订单必须经过独立于信号函数的预交易风控；以标的、策略、信号K线和方向生成确定性ID。
 - 网络超时造成订单结果不确定时，停止自动交易并人工核对，绝不盲目重试。
 - 每个标的最多一个未完成订单；系统重启后先与账户、持仓和订单历史对账，再计算新信号。

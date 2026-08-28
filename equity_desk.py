@@ -223,6 +223,8 @@ def desk_status(
         reasons.append("desk_journal_unreadable")
     elif journal_status["missing_required_phase_sessions"]:
         reasons.append("desk_journal_incomplete")
+    if journal_status["calendar_unsupported_day_count"]:
+        reasons.append("desk_journal_calendar_unsupported")
     if not research["readable"]:
         reasons.append("research_ledger_unreadable")
     elif research["deployable_count"] == 0:
@@ -269,12 +271,16 @@ def desk_status(
             "reasons": reasons or ["strategy_not_preregistered"],
             "blocked_symbols": unmanaged_symbols,
             "next_gate": (
-                "repair_desk_journal"
-                if journal_status["decision"] == "BLOCKED"
+                "extend_nyse_calendar"
+                if journal_status["calendar_unsupported_day_count"]
                 else (
-                    "qualified_forward_data"
-                    if recorder["decision"] != "DATA_USABLE"
-                    else "preregister_strategy"
+                    "repair_desk_journal"
+                    if journal_status["decision"] == "BLOCKED"
+                    else (
+                        "qualified_forward_data"
+                        if recorder["decision"] != "DATA_USABLE"
+                        else "preregister_strategy"
+                    )
                 )
             ),
         },
@@ -352,9 +358,14 @@ def desk_journal_status(
         authorization = str((record.get("desk") or {}).get("authorization_level"))
         authorizations[authorization] = authorizations.get(authorization, 0) + 1
     session_checks = []
+    unsupported_day_count = 0
+    first_unsupported_day = None
     day = DESK_JOURNAL_REQUIRED_FROM
     while day <= now.date():
         session_type, scheduled_close = _session_schedule(day)
+        if session_type == "UNSUPPORTED":
+            unsupported_day_count += 1
+            first_unsupported_day = first_unsupported_day or day.isoformat()
         expected = []
         if session_type in {"FULL", "EARLY_CLOSE"}:
             if day < now.date() or now.time() >= DESK_JOURNAL_PRE_OPEN_DUE:
@@ -379,7 +390,7 @@ def desk_journal_status(
         "readable": not invalid_lines,
         "decision": (
             "BLOCKED"
-            if invalid_lines or missing_sessions
+            if invalid_lines or missing_sessions or unsupported_day_count
             else (
                 "AUDIT_OK"
                 if session_checks
@@ -398,6 +409,8 @@ def desk_journal_status(
         "checked_session_count": len(session_checks),
         "compliant_session_count": len(session_checks) - len(missing_sessions),
         "missing_required_phase_sessions": missing_sessions,
+        "calendar_unsupported_day_count": unsupported_day_count,
+        "first_calendar_unsupported_day": first_unsupported_day,
         "last_recorded_at": last.get("recorded_at"),
         "last_record_key": last.get("record_key"),
         "orders_enabled": False,

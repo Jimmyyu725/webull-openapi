@@ -1762,6 +1762,44 @@ class EquityDeskTests(unittest.TestCase):
         self.assertEqual(result["checked_session_count"], 0)
         self.assertEqual(result["missing_required_phase_sessions"], [])
 
+    def test_desk_status_fails_closed_beyond_frozen_nyse_calendar(self):
+        api = self._api()
+        now = datetime(2029, 1, 2, 15, 0, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "equity_desk.DESK_JOURNAL_REQUIRED_FROM", date(2029, 1, 2)
+        ):
+            root = Path(directory)
+            result = equity_desk_status(
+                api,
+                database=root / "missing.sqlite3",
+                journal=root / "missing.jsonl",
+                now=now,
+            )
+
+        journal = result["desk_journal"]
+        automatic = result["automatic_equity_trading"]
+        self.assertEqual(journal["decision"], "BLOCKED")
+        self.assertEqual(journal["calendar_unsupported_day_count"], 1)
+        self.assertEqual(journal["first_calendar_unsupported_day"], "2029-01-02")
+        self.assertIn("desk_journal_calendar_unsupported", automatic["reasons"])
+        self.assertEqual(automatic["next_gate"], "extend_nyse_calendar")
+
+    def test_desk_journal_last_supported_year_is_not_calendar_error(self):
+        now = datetime(2028, 12, 26, 15, 0, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "equity_desk.DESK_JOURNAL_REQUIRED_FROM", date(2028, 12, 26)
+        ):
+            result = desk_journal_status(
+                Path(directory) / "missing.jsonl", now=now
+            )
+
+        self.assertEqual(result["calendar_unsupported_day_count"], 0)
+        self.assertIsNone(result["first_calendar_unsupported_day"])
+        self.assertEqual(
+            result["missing_required_phase_sessions"][0]["missing_phases"],
+            ["pre_open"],
+        )
+
 
 class EquityOrbStrategyTests(unittest.TestCase):
     def _session(self, day: date, opening_volume: int, *, bars: int = 78) -> Session:
