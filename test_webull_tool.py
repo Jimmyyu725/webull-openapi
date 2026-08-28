@@ -2597,13 +2597,16 @@ class RuntimeEnvironmentTests(unittest.TestCase):
 class ExecutionAuthorizationTests(unittest.TestCase):
     def _policy(self, directory: str, **updates) -> Path:
         policy = {
-            "version": 2,
+            "version": 3,
             "environment": "api.sandbox.webull.com",
             "authorization_level": "SANDBOX_MICRO",
             "new_entries_enabled": True,
             "approved_strategy_ids": ["crypto-day-v2"],
             "approved_symbols": ["BTCUSD"],
             "max_order_notional_fraction": "0.005",
+            "max_quote_age_seconds": "15",
+            "max_bid_ask_spread_fraction": "0.0225",
+            "max_order_to_displayed_ask_fraction": "1",
             "expires_at": "2026-02-01T00:00:00+00:00",
         }
         policy.update(updates)
@@ -2620,6 +2623,7 @@ class ExecutionAuthorizationTests(unittest.TestCase):
             now=datetime(2026, 1, 20, tzinfo=timezone.utc),
         )
         self.assertEqual(status["authorization_level"], "DATA_COLLECTION")
+        self.assertTrue(status["gate_checks"]["market_quality_limits_present"])
         self.assertFalse(status["new_entries_authorized"])
         self.assertFalse(decision["authorized"])
 
@@ -2782,6 +2786,10 @@ class ExecutionAuthorizationTests(unittest.TestCase):
             "current_open_order_count": 0,
             "current_buying_power": Decimal("1000000"),
             "order_reference_price": Decimal("100"),
+            "current_best_bid": Decimal("99"),
+            "current_best_ask": Decimal("100"),
+            "current_ask_size": Decimal("1000"),
+            "quote_age_seconds": Decimal("1"),
         }
         with tempfile.TemporaryDirectory() as directory:
             policy = self._policy(directory)
@@ -2833,6 +2841,63 @@ class ExecutionAuthorizationTests(unittest.TestCase):
         self.assertIn("capital_state_unverified", unverified["blocking_reasons"])
         self.assertIn("invalid_capital_state", invalid["blocking_reasons"])
 
+    def test_buy_requires_fresh_orderable_two_sided_market(self):
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        common = {
+            "strategy_id": "crypto-day-v2",
+            "symbol": "BTCUSD",
+            "side": "BUY",
+            "now": now,
+            "current_position_quantity": Decimal("0"),
+            "order_quantity": Decimal("1"),
+            "current_open_order_count": 0,
+            "current_buying_power": Decimal("1000000"),
+            "order_reference_price": Decimal("100"),
+            "current_best_bid": Decimal("99"),
+            "current_best_ask": Decimal("100"),
+            "current_ask_size": Decimal("1"),
+            "quote_age_seconds": Decimal("15"),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            policy = self._policy(directory)
+            common["policy_file"] = policy
+            valid = authorize_automated_order(**common)
+            stale = authorize_automated_order(
+                **{**common, "quote_age_seconds": Decimal("15.0001")}
+            )
+            future = authorize_automated_order(
+                **{**common, "quote_age_seconds": Decimal("-2.0001")}
+            )
+            crossed = authorize_automated_order(
+                **{**common, "current_best_bid": Decimal("101")}
+            )
+            wide = authorize_automated_order(
+                **{**common, "current_best_bid": Decimal("97")}
+            )
+            thin = authorize_automated_order(
+                **{**common, "current_ask_size": Decimal("0.9999")}
+            )
+            mismatched = authorize_automated_order(
+                **{**common, "order_reference_price": Decimal("99.99")}
+            )
+            missing = authorize_automated_order(
+                **{
+                    key: value
+                    for key, value in common.items()
+                    if key not in {"current_best_bid", "current_best_ask", "current_ask_size", "quote_age_seconds"}
+                }
+            )
+
+        self.assertTrue(valid["authorized"])
+        self.assertEqual(valid["maximum_displayed_order_quantity"], "1")
+        self.assertIn("stale_market_quote", stale["blocking_reasons"])
+        self.assertIn("market_quote_from_future", future["blocking_reasons"])
+        self.assertIn("crossed_market_quote", crossed["blocking_reasons"])
+        self.assertIn("market_spread_exceeded", wide["blocking_reasons"])
+        self.assertIn("displayed_liquidity_exceeded", thin["blocking_reasons"])
+        self.assertIn("reference_price_not_current_ask", mismatched["blocking_reasons"])
+        self.assertIn("market_state_unverified", missing["blocking_reasons"])
+
     def test_unexpired_policy_limits_strategy_and_symbol(self):
         now = datetime(2026, 1, 20, tzinfo=timezone.utc)
         with tempfile.TemporaryDirectory() as directory:
@@ -2848,6 +2913,10 @@ class ExecutionAuthorizationTests(unittest.TestCase):
                 current_open_order_count=0,
                 current_buying_power=Decimal("1000000"),
                 order_reference_price=Decimal("100"),
+                current_best_bid=Decimal("99"),
+                current_best_ask=Decimal("100"),
+                current_ask_size=Decimal("1000"),
+                quote_age_seconds=Decimal("1"),
             )
             wrong_strategy = authorize_automated_order(
                 "crypto-ema-ha-v1", "BTCUSD", "BUY", policy_file=policy, now=now
@@ -2906,7 +2975,14 @@ class FakeCryptoAPI:
         self.data = SimpleNamespace(
             crypto_market_data=SimpleNamespace(
                 get_crypto_snapshot=lambda symbols: [
-                    {"symbol": symbol, "price": "100", "bid": "99", "ask": "101"}
+                    {
+                        "symbol": symbol,
+                        "price": "100",
+                        "bid": "99",
+                        "ask": "101",
+                        "ask_size": "1000",
+                        "quote_time": int(datetime.now(timezone.utc).timestamp() * 1000),
+                    }
                     for symbol in symbols
                 ]
             ),
@@ -2989,6 +3065,36 @@ class CryptoRuntimeTests(unittest.TestCase):
         self.assertEqual(state["version"], 2)
         self.assertEqual(state["managed_positions"], {})
         self.assertEqual(read_state()["managed_positions"], {})
+
+    def test_buy_market_state_uses_quote_time_and_never_last_price_fallback(self):
+        from crypto_runtime import _buy_market_state
+
+        observed = datetime(2026, 1, 20, 0, 0, 10, tzinfo=timezone.utc)
+        quote_time = int(
+            datetime(2026, 1, 20, 0, 0, 4, tzinfo=timezone.utc).timestamp() * 1000
+        )
+        valid = _buy_market_state(
+            {
+                "bid": "99",
+                "ask": "100",
+                "ask_size": "2",
+                "quote_time": quote_time,
+            },
+            observed_at=observed,
+        )
+        missing_ask = _buy_market_state(
+            {
+                "price": "100",
+                "bid": "99",
+                "ask_size": "2",
+                "quote_time": quote_time,
+            },
+            observed_at=observed,
+        )
+
+        self.assertEqual(valid["quote_age_seconds"], Decimal("6.0"))
+        self.assertEqual(valid["current_best_ask"], Decimal("100"))
+        self.assertIsNone(missing_ask["current_best_ask"])
 
     def test_execution_guard_blocks_entry_before_order_submission(self):
         from crypto_runtime import initialize_state, submit_market_order
@@ -3081,6 +3187,12 @@ class CryptoRuntimeTests(unittest.TestCase):
             candle_time=datetime(2026, 1, 20, tzinfo=timezone.utc),
             reason="test",
             reference_price=Decimal("100"),
+            market_state={
+                "current_best_bid": Decimal("99"),
+                "current_best_ask": Decimal("100"),
+                "current_ask_size": Decimal("1000"),
+                "quote_age_seconds": Decimal("1"),
+            },
         )
 
         self.authorization.assert_called_once_with(
@@ -3092,6 +3204,10 @@ class CryptoRuntimeTests(unittest.TestCase):
             current_open_order_count=0,
             current_buying_power=Decimal("1000000"),
             order_reference_price=Decimal("100"),
+            current_best_bid=Decimal("99"),
+            current_best_ask=Decimal("100"),
+            current_ask_size=Decimal("1000"),
+            quote_age_seconds=Decimal("1"),
         )
 
     def test_unreadable_open_order_state_fails_before_authorization(self):
@@ -3470,6 +3586,12 @@ class DayTraderRuntimeTests(unittest.TestCase):
             event_time=now,
             reason="test",
             reference_price=Decimal("100"),
+            market_state={
+                "current_best_bid": Decimal("99"),
+                "current_best_ask": Decimal("100"),
+                "current_ask_size": Decimal("1000"),
+                "quote_age_seconds": Decimal("1"),
+            },
         )
 
         self.authorization.assert_called_once_with(
@@ -3481,6 +3603,10 @@ class DayTraderRuntimeTests(unittest.TestCase):
             current_open_order_count=0,
             current_buying_power=Decimal("1000000"),
             order_reference_price=Decimal("100"),
+            current_best_bid=Decimal("99"),
+            current_best_ask=Decimal("100"),
+            current_ask_size=Decimal("1000"),
+            quote_age_seconds=Decimal("1"),
         )
 
     def test_daytrader_does_not_sell_unmanaged_position(self):

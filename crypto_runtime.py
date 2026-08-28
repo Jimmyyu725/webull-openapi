@@ -183,6 +183,35 @@ def _snapshots(api: WebullAPI, symbols: list[str]) -> dict[str, dict[str, Any]]:
     return {str(item["symbol"]): item for item in data or []}
 
 
+def _buy_market_state(
+    snapshot: dict[str, Any], *, observed_at: Optional[datetime] = None
+) -> dict[str, Optional[Decimal]]:
+    def decimal_value(key: str) -> Optional[Decimal]:
+        try:
+            return Decimal(str(snapshot[key]))
+        except (ArithmeticError, KeyError, TypeError, ValueError):
+            return None
+
+    quote_time = decimal_value("quote_time")
+    quote_age_seconds = None
+    if quote_time is not None and quote_time.is_finite():
+        try:
+            quoted_at = datetime.fromtimestamp(
+                float(quote_time / Decimal("1000")), timezone.utc
+            )
+            quote_age_seconds = Decimal(
+                str(((observed_at or utc_now()) - quoted_at).total_seconds())
+            )
+        except (OSError, OverflowError, ValueError):
+            quote_age_seconds = None
+    return {
+        "current_best_bid": decimal_value("bid"),
+        "current_best_ask": decimal_value("ask"),
+        "current_ask_size": decimal_value("ask_size"),
+        "quote_age_seconds": quote_age_seconds,
+    }
+
+
 def _instrument_rule(api: WebullAPI, symbol: str) -> tuple[Decimal, Decimal, Decimal]:
     data = _api_data(api.data.instrument.get_crypto_instrument([symbol]), "Instrument query")
     item = next((row for row in data or [] if row.get("symbol") == symbol), None)
@@ -304,6 +333,7 @@ def submit_market_order(
     reason: str,
     estimated_loss: bool = False,
     reference_price: Optional[Decimal] = None,
+    market_state: Optional[dict[str, Optional[Decimal]]] = None,
 ) -> dict[str, Any]:
     current_position = _position_map(api, account_id).get(symbol)
     current_open_order_count = _open_order_count(api, account_id)
@@ -311,6 +341,7 @@ def submit_market_order(
         {
             "current_buying_power": _buying_power(api, account_id),
             "order_reference_price": reference_price,
+            **(market_state or {}),
         }
         if side.upper() == "BUY"
         else {}
@@ -437,6 +468,7 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
 
         symbols = list(state["eligible_symbols"])
         snapshots = _snapshots(api, symbols)
+        quote_observed_at = utc_now()
 
         # Stop-loss checks run every minute, independently of the M120 signal cadence.
         for symbol, position in positions.items():
@@ -502,7 +534,12 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                 and not cooldown_active
             ):
                 buying_power = buying_power or _buying_power(api, account_id)
-                ask = Decimal(str(snapshots[symbol].get("ask") or snapshots[symbol].get("price")))
+                market_state = _buy_market_state(
+                    snapshots[symbol], observed_at=quote_observed_at
+                )
+                ask = market_state["current_best_ask"]
+                if ask is None or not ask.is_finite() or ask <= 0:
+                    raise RuntimeError(f"Executable ask is unavailable for {symbol}")
                 lot_size, min_quantity, min_amount = _instrument_rule(api, symbol)
                 quantity = quantity_for_notional(buying_power * ALLOCATION, ask, lot_size)
                 if quantity < min_quantity or quantity * ask < min_amount:
@@ -517,6 +554,7 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                     candle_time=candle.time,
                     reason="ema_entry",
                     reference_price=ask,
+                    market_state=market_state,
                 )
                 action = "blocked" if submission.get("blocked") else "buy"
             state["last_processed_candle"][symbol] = candle_id

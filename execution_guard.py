@@ -28,6 +28,9 @@ def authorization_status(
         "approved_symbols": [],
         "expires_at": None,
         "max_order_notional_fraction": None,
+        "max_quote_age_seconds": None,
+        "max_bid_ask_spread_fraction": None,
+        "max_order_to_displayed_ask_fraction": None,
         "blocking_reasons": ["policy_unreadable"],
         "orders_enabled": False,
     }
@@ -52,14 +55,38 @@ def authorization_status(
         and max_order_notional_fraction.is_finite()
         and Decimal("0") < max_order_notional_fraction <= Decimal("0.025")
     )
+    try:
+        max_quote_age_seconds = Decimal(str(policy.get("max_quote_age_seconds")))
+        max_bid_ask_spread_fraction = Decimal(
+            str(policy.get("max_bid_ask_spread_fraction"))
+        )
+        max_order_to_displayed_ask_fraction = Decimal(
+            str(policy.get("max_order_to_displayed_ask_fraction"))
+        )
+    except (ArithmeticError, ValueError):
+        max_quote_age_seconds = None
+        max_bid_ask_spread_fraction = None
+        max_order_to_displayed_ask_fraction = None
+    market_limits_valid = bool(
+        max_quote_age_seconds is not None
+        and max_quote_age_seconds.is_finite()
+        and Decimal("0") < max_quote_age_seconds <= Decimal("60")
+        and max_bid_ask_spread_fraction is not None
+        and max_bid_ask_spread_fraction.is_finite()
+        and Decimal("0") < max_bid_ask_spread_fraction <= Decimal("0.05")
+        and max_order_to_displayed_ask_fraction is not None
+        and max_order_to_displayed_ask_fraction.is_finite()
+        and Decimal("0") < max_order_to_displayed_ask_fraction <= Decimal("1")
+    )
     structurally_valid = bool(
-        policy.get("version") == 2
+        policy.get("version") == 3
         and policy.get("environment") == SANDBOX_ENDPOINT
         and isinstance(strategies, list)
         and all(isinstance(item, str) and item for item in strategies)
         and isinstance(symbols, list)
         and all(isinstance(item, str) and item for item in symbols)
         and notional_limit_valid
+        and market_limits_valid
     )
     expires_in_future = False
     if expires_at:
@@ -80,6 +107,7 @@ def authorization_status(
         "approved_strategy_present": bool(strategies),
         "approved_symbol_present": bool(symbols),
         "order_notional_limit_present": notional_limit_valid,
+        "market_quality_limits_present": market_limits_valid,
         "not_expired": expires_in_future,
     }
     blocking = [name for name, passed in checks.items() if not passed]
@@ -92,6 +120,15 @@ def authorization_status(
         "expires_at": expires_at,
         "max_order_notional_fraction": (
             str(max_order_notional_fraction) if notional_limit_valid else None
+        ),
+        "max_quote_age_seconds": (
+            str(max_quote_age_seconds) if market_limits_valid else None
+        ),
+        "max_bid_ask_spread_fraction": (
+            str(max_bid_ask_spread_fraction) if market_limits_valid else None
+        ),
+        "max_order_to_displayed_ask_fraction": (
+            str(max_order_to_displayed_ask_fraction) if market_limits_valid else None
         ),
         "gate_checks": checks,
         "blocking_reasons": blocking,
@@ -113,6 +150,10 @@ def authorize_automated_order(
     current_open_order_count: Optional[int] = None,
     current_buying_power: Optional[Decimal] = None,
     order_reference_price: Optional[Decimal] = None,
+    current_best_bid: Optional[Decimal] = None,
+    current_best_ask: Optional[Decimal] = None,
+    current_ask_size: Optional[Decimal] = None,
+    quote_age_seconds: Optional[Decimal] = None,
 ) -> dict[str, Any]:
     normalized_side = side.upper()
     status = authorization_status(policy_file, now=now)
@@ -197,6 +238,8 @@ def authorize_automated_order(
             reasons.append("open_orders_present")
     order_notional = None
     maximum_order_notional = None
+    bid_ask_spread_fraction = None
+    maximum_displayed_order_quantity = None
     if current_buying_power is None or order_reference_price is None:
         reasons.append("capital_state_unverified")
     elif (
@@ -219,6 +262,55 @@ def authorize_automated_order(
             maximum_order_notional = current_buying_power * Decimal(str(fraction))
             if order_notional > maximum_order_notional:
                 reasons.append("order_notional_limit_exceeded")
+    market_values = (
+        current_best_bid,
+        current_best_ask,
+        current_ask_size,
+        quote_age_seconds,
+    )
+    if any(value is None for value in market_values):
+        reasons.append("market_state_unverified")
+    elif any(not value.is_finite() for value in market_values if value is not None):
+        reasons.append("invalid_market_state")
+    elif (
+        current_best_bid <= 0
+        or current_best_ask <= 0
+        or current_ask_size <= 0
+    ):
+        reasons.append("invalid_market_state")
+    else:
+        if quote_age_seconds < Decimal("-2"):
+            reasons.append("market_quote_from_future")
+        max_quote_age = status.get("max_quote_age_seconds")
+        if max_quote_age is None:
+            reasons.append("market_limits_unavailable")
+        elif quote_age_seconds > Decimal(str(max_quote_age)):
+            reasons.append("stale_market_quote")
+        if current_best_ask < current_best_bid:
+            reasons.append("crossed_market_quote")
+        else:
+            midpoint = (current_best_ask + current_best_bid) / Decimal("2")
+            bid_ask_spread_fraction = (current_best_ask - current_best_bid) / midpoint
+            max_spread = status.get("max_bid_ask_spread_fraction")
+            if max_spread is None:
+                reasons.append("market_limits_unavailable")
+            elif bid_ask_spread_fraction > Decimal(str(max_spread)):
+                reasons.append("market_spread_exceeded")
+        if order_reference_price is not None and order_reference_price != current_best_ask:
+            reasons.append("reference_price_not_current_ask")
+        max_displayed_fraction = status.get("max_order_to_displayed_ask_fraction")
+        if max_displayed_fraction is None:
+            reasons.append("market_limits_unavailable")
+        else:
+            maximum_displayed_order_quantity = current_ask_size * Decimal(
+                str(max_displayed_fraction)
+            )
+            if (
+                order_quantity is not None
+                and order_quantity.is_finite()
+                and order_quantity > maximum_displayed_order_quantity
+            ):
+                reasons.append("displayed_liquidity_exceeded")
     if strategy_id not in status["approved_strategy_ids"]:
         reasons.append("strategy_not_approved")
     if symbol not in status["approved_symbols"]:
@@ -230,5 +322,13 @@ def authorize_automated_order(
         "order_notional": str(order_notional) if order_notional is not None else None,
         "maximum_order_notional": (
             str(maximum_order_notional) if maximum_order_notional is not None else None
+        ),
+        "bid_ask_spread_fraction": (
+            str(bid_ask_spread_fraction) if bid_ask_spread_fraction is not None else None
+        ),
+        "maximum_displayed_order_quantity": (
+            str(maximum_displayed_order_quantity)
+            if maximum_displayed_order_quantity is not None
+            else None
         ),
     }

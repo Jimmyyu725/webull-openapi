@@ -1,11 +1,14 @@
 {
-  "version": 2,
+  "version": 3,
   "environment": "api.sandbox.webull.com",
   "authorization_level": "DATA_COLLECTION",
   "new_entries_enabled": false,
   "approved_strategy_ids": [],
   "approved_symbols": [],
   "max_order_notional_fraction": "0.005",
+  "max_quote_age_seconds": "15",
+  "max_bid_ask_spread_fraction": "0.0225",
+  "max_order_to_displayed_ask_fraction": "1",
   "expires_at": null,
   "reason": "Forward data, independent strategy evidence, and shadow execution gates are incomplete."
 }

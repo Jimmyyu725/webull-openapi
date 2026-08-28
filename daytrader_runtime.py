@@ -23,6 +23,7 @@ from crypto_runtime import (
     TERMINAL_ORDER_STATUSES,
     _already_exists,
     _buying_power,
+    _buy_market_state,
     _instrument_rule,
     _managed_position_quantity,
     _order_status,
@@ -169,6 +170,7 @@ def _submit_order(
     reason: str,
     estimated_loss: bool = False,
     reference_price: Optional[Decimal] = None,
+    market_state: Optional[dict[str, Optional[Decimal]]] = None,
 ) -> dict[str, Any]:
     current_position = _position_map(api, account_id).get(symbol)
     current_open_order_count = _open_order_count(api, account_id)
@@ -176,6 +178,7 @@ def _submit_order(
         {
             "current_buying_power": _buying_power(api, account_id),
             "order_reference_price": reference_price,
+            **(market_state or {}),
         }
         if side.upper() == "BUY"
         else {}
@@ -411,6 +414,7 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
 
         symbols = list(state["symbols"])
         snapshots = _snapshots(api, symbols)
+        quote_observed_at = utc_now()
         for symbol, position in positions.items():
             if symbol not in symbols or symbol in state["pending_orders"]:
                 continue
@@ -486,7 +490,12 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                     and len(entered_today) < MAX_DAILY_ENTRIES
                     and symbol not in entered_today
                 ):
-                    ask = Decimal(str(snapshots[symbol].get("ask") or snapshots[symbol].get("price")))
+                    market_state = _buy_market_state(
+                        snapshots[symbol], observed_at=quote_observed_at
+                    )
+                    ask = market_state["current_best_ask"]
+                    if ask is None or not ask.is_finite() or ask <= 0:
+                        raise RuntimeError(f"Executable ask is unavailable for {symbol}")
                     lot_size, min_quantity, min_amount = _instrument_rule(api, symbol)
                     quantity = quantity_for_notional(_buying_power(api, account_id) * ALLOCATION, ask, lot_size)
                     if quantity < min_quantity or quantity * ask < min_amount:
@@ -501,6 +510,7 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                         event_time=candle.time,
                         reason="m5_breakout",
                         reference_price=ask,
+                        market_state=market_state,
                     )
                     if submission.get("blocked"):
                         action = "blocked"
