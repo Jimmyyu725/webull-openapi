@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from config import API_ENDPOINT
 from equity_forward_recorder import APP_DIR, DATABASE, execution_diagnostics, status as recorder_status
+from execution_guard import authorization_status
 from webull_api import WebullAPI, normalize_result
 
 
@@ -173,6 +174,7 @@ def desk_status(
     recorder = recorder_status(database)
     tca = execution_diagnostics(database)
     research = research_status()
+    execution_authorization = authorization_status()
     accounts = {str(row.get("account_class")): row for row in api.accounts(refresh=True)}
     account_summaries = []
     missing_accounts = []
@@ -273,6 +275,7 @@ def desk_status(
             "pending_order_count": len(crypto_pending),
             "submitted_order_count": len(crypto_state.get("submitted_order_ids") or []),
         },
+        "execution_authorization": execution_authorization,
         "orders_enabled": False,
     }
 

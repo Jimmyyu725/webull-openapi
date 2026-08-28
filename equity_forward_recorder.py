@@ -572,6 +572,7 @@ def _deploy_runtime() -> None:
         "crypto_strategy.py",
         "equity_desk.py",
         "equity_forward_recorder.py",
+        "execution_guard.py",
         "webull_api.py",
         "webull_cli.py",
         "webull_orders.py",
@@ -584,6 +585,10 @@ def _deploy_runtime() -> None:
     shutil.copy2(
         ROOT / "reports" / "research-attempt-ledger.json",
         deployed_reports / "research-attempt-ledger.json",
+    )
+    shutil.copy2(
+        ROOT / "reports" / "sandbox-execution-authorization.json",
+        deployed_reports / "sandbox-execution-authorization.json",
     )
     python = DEPLOY_VENV / "bin" / "python"
     if not python.exists():

@@ -69,6 +69,7 @@ from equity_desk import (
     record_desk_snapshot,
     research_status as equity_research_status,
 )
+from execution_guard import authorization_status, authorize_automated_order
 from intraday_momentum_strategy import (
     Observation,
     _execute as execute_intraday_momentum,
@@ -778,6 +779,7 @@ class EquityDeskTests(unittest.TestCase):
         self.assertIn("unmanaged_equity_positions", authorization["reasons"])
         self.assertEqual(authorization["blocked_symbols"], ["AAPL"])
         self.assertTrue(result["legacy_crypto_automation"]["paused"])
+        self.assertFalse(result["execution_authorization"]["new_entries_authorized"])
         self.assertFalse(result["orders_enabled"])
         self.assertEqual(api.trade.account_v2.get_account_position.call_count, 2)
         self.assertEqual(api.trade.order_v3.get_order_open.call_count, 2)
@@ -1610,6 +1612,75 @@ class OpeningPressureStrategyTests(unittest.TestCase):
         self.assertEqual(report["decision"], "REJECT_BEFORE_HOLDOUT")
 
 
+class ExecutionAuthorizationTests(unittest.TestCase):
+    def _policy(self, directory: str, **updates) -> Path:
+        policy = {
+            "version": 1,
+            "environment": "api.sandbox.webull.com",
+            "authorization_level": "SANDBOX_MICRO",
+            "new_entries_enabled": True,
+            "approved_strategy_ids": ["crypto-day-v2"],
+            "approved_symbols": ["BTCUSD"],
+            "expires_at": "2026-02-01T00:00:00+00:00",
+        }
+        policy.update(updates)
+        path = Path(directory) / "authorization.json"
+        path.write_text(json.dumps(policy), encoding="utf-8")
+        return path
+
+    def test_repository_policy_blocks_new_risk(self):
+        status = authorization_status(now=datetime(2026, 1, 20, tzinfo=timezone.utc))
+        decision = authorize_automated_order(
+            "crypto-day-v2",
+            "BTCUSD",
+            "BUY",
+            now=datetime(2026, 1, 20, tzinfo=timezone.utc),
+        )
+        self.assertEqual(status["authorization_level"], "DATA_COLLECTION")
+        self.assertFalse(status["new_entries_authorized"])
+        self.assertFalse(decision["authorized"])
+
+    def test_missing_policy_fails_closed_for_entry_but_preserves_sandbox_exit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / "missing.json"
+            buy = authorize_automated_order(
+                "crypto-day-v2", "BTCUSD", "BUY", policy_file=missing
+            )
+            sell = authorize_automated_order(
+                "crypto-day-v2", "BTCUSD", "SELL", policy_file=missing
+            )
+        self.assertFalse(buy["authorized"])
+        self.assertIn("policy_unreadable", buy["blocking_reasons"])
+        self.assertTrue(sell["authorized"])
+        self.assertEqual(sell["mode"], "RISK_REDUCTION")
+
+    def test_unexpired_policy_limits_strategy_and_symbol(self):
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            policy = self._policy(directory)
+            approved = authorize_automated_order(
+                "crypto-day-v2", "BTCUSD", "BUY", policy_file=policy, now=now
+            )
+            wrong_strategy = authorize_automated_order(
+                "crypto-ema-ha-v1", "BTCUSD", "BUY", policy_file=policy, now=now
+            )
+            wrong_symbol = authorize_automated_order(
+                "crypto-day-v2", "ETHUSD", "BUY", policy_file=policy, now=now
+            )
+        self.assertTrue(approved["authorized"])
+        self.assertIn("strategy_not_approved", wrong_strategy["blocking_reasons"])
+        self.assertIn("symbol_not_approved", wrong_symbol["blocking_reasons"])
+
+    def test_production_endpoint_blocks_risk_reduction_too(self):
+        with tempfile.TemporaryDirectory() as directory:
+            policy = self._policy(directory)
+            with mock.patch("execution_guard.API_ENDPOINT", "api.webull.com"):
+                decision = authorize_automated_order(
+                    "crypto-day-v2", "BTCUSD", "SELL", policy_file=policy
+                )
+        self.assertFalse(decision["authorized"])
+
+
 class FakeResponse:
     def __init__(self, status_code, data=None):
         self.status_code = status_code
@@ -1669,15 +1740,22 @@ class CryptoRuntimeTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
+        authorization_patcher = mock.patch(
+            "crypto_runtime.authorize_automated_order",
+            return_value={"authorized": True, "mode": "SANDBOX_MICRO", "blocking_reasons": []},
+        )
         self.patches = [
             mock.patch("crypto_runtime.STATE_DIR", root),
             mock.patch("crypto_runtime.STATE_FILE", root / "state.json"),
             mock.patch("crypto_runtime.LOG_FILE", root / "events.jsonl"),
             mock.patch("crypto_runtime.LOCK_FILE", root / "strategy.lock"),
             mock.patch("crypto_runtime.load_report", return_value={"deployment_symbols": ["BTCUSD"]}),
+            authorization_patcher,
         ]
         for patcher in self.patches:
-            patcher.start()
+            started = patcher.start()
+            if patcher is authorization_patcher:
+                self.authorization = started
 
     def tearDown(self):
         for patcher in reversed(self.patches):
@@ -1700,6 +1778,41 @@ class CryptoRuntimeTests(unittest.TestCase):
             run_once(api, confirmed=True, now=now)
             run_once(api, confirmed=True, now=now + timedelta(minutes=1))
         self.assertEqual(len(api.place_calls), 1)
+
+    def test_execution_guard_blocks_entry_before_order_submission(self):
+        from crypto_runtime import initialize_state, submit_market_order
+
+        self.authorization.return_value = {
+            "authorized": False,
+            "mode": "BLOCKED",
+            "blocking_reasons": ["new_entries_enabled"],
+        }
+        api = FakeCryptoAPI()
+        state = initialize_state(datetime(2026, 1, 20, tzinfo=timezone.utc))
+        result = submit_market_order(
+            api,
+            "crypto-account",
+            state,
+            symbol="BTCUSD",
+            side="BUY",
+            quantity=Decimal("0.01"),
+            candle_time=datetime(2026, 1, 20, tzinfo=timezone.utc),
+            reason="test",
+        )
+        self.assertTrue(result["blocked"])
+        self.assertEqual(api.place_calls, [])
+        self.assertEqual(state["submitted_order_ids"], [])
+
+    def test_crypto_status_requires_capital_authorization(self):
+        from crypto_runtime import status
+
+        with mock.patch(
+            "crypto_runtime.authorization_status",
+            return_value={"new_entries_authorized": False},
+        ):
+            result = status()
+        self.assertEqual(result["deployment_symbols"], ["BTCUSD"])
+        self.assertEqual(result["decision"], "NO_TRADE")
 
     def test_pending_order_blocks_new_entry(self):
         from crypto_runtime import initialize_state, run_once, write_state
@@ -1841,6 +1954,10 @@ class DayTraderRuntimeTests(unittest.TestCase):
                 }
             },
         }
+        authorization_patcher = mock.patch(
+            "daytrader_runtime.authorize_automated_order",
+            return_value={"authorized": True, "mode": "SANDBOX_MICRO", "blocking_reasons": []},
+        )
         self.patches = [
             mock.patch("daytrader_runtime.STATE_DIR", root),
             mock.patch("daytrader_runtime.STATE_FILE", root / "state.json"),
@@ -1848,9 +1965,12 @@ class DayTraderRuntimeTests(unittest.TestCase):
             mock.patch("daytrader_runtime.LOCK_FILE", root / "strategy.lock"),
             mock.patch("daytrader_runtime.load_report", return_value=report),
             mock.patch("daytrader_runtime._ensure_old_runner_paused"),
+            authorization_patcher,
         ]
         for patcher in self.patches:
-            patcher.start()
+            started = patcher.start()
+            if patcher is authorization_patcher:
+                self.authorization = started
 
     def tearDown(self):
         for patcher in reversed(self.patches):
@@ -1873,6 +1993,35 @@ class DayTraderRuntimeTests(unittest.TestCase):
             run_once(api, confirmed=True, now=datetime(2026, 1, 20, tzinfo=timezone.utc))
         self.assertEqual(len(api.place_calls), 1)
         self.assertEqual(api.place_calls[0][1][0]["symbol"], "BTCUSD")
+
+    def test_daytrader_guard_blocks_entry_without_consuming_daily_limit(self):
+        from daytrader_runtime import read_state, run_once
+
+        self.authorization.return_value = {
+            "authorized": False,
+            "mode": "BLOCKED",
+            "blocking_reasons": ["new_entries_enabled"],
+        }
+        api = FakeCryptoAPI()
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        with mock.patch("daytrader_runtime.webull_bars", return_value=self._closed_bars()), mock.patch(
+            "daytrader_runtime.decision_snapshot", return_value={"signal": "BUY"}
+        ):
+            run_once(api, confirmed=True, now=now)
+        state = read_state()
+        self.assertEqual(api.place_calls, [])
+        self.assertEqual(state["entries_by_day"][now.date().isoformat()], [])
+
+    def test_daytrader_status_requires_capital_authorization(self):
+        from daytrader_runtime import status
+
+        with mock.patch(
+            "daytrader_runtime.authorization_status",
+            return_value={"new_entries_authorized": False},
+        ):
+            result = status()
+        self.assertEqual(result["deployment_symbols"], ["BTCUSD", "ETHUSD"])
+        self.assertEqual(result["decision"], "NO_TRADE")
 
     def test_daytrader_pause_blocks_new_entries(self):
         from daytrader_runtime import initialize_state, run_once, write_state

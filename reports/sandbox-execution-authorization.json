@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "environment": "api.sandbox.webull.com",
+  "authorization_level": "DATA_COLLECTION",
+  "new_entries_enabled": false,
+  "approved_strategy_ids": [],
+  "approved_symbols": [],
+  "expires_at": null,
+  "reason": "Forward data, independent strategy evidence, and shadow execution gates are incomplete."
+}

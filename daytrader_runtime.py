@@ -40,6 +40,7 @@ from daytrader_strategy import (
     decision_snapshot,
     load_report,
 )
+from execution_guard import authorization_status, authorize_automated_order
 from webull_api import WebullAPI, normalize_result, redact_secrets
 from webull_orders import build_order
 
@@ -54,6 +55,7 @@ ERROR_BACKOFF_SECONDS = 30
 MAX_DAILY_ENTRIES = 2
 MAX_DAILY_LOSSES = 2
 MAX_HOLD = timedelta(seconds=MAX_HOLD_BARS * 300)
+STRATEGY_ID = "crypto-day-v2"
 
 
 def utc_now() -> datetime:
@@ -157,6 +159,15 @@ def _submit_order(
     reason: str,
     estimated_loss: bool = False,
 ) -> dict[str, Any]:
+    authorization = authorize_automated_order(STRATEGY_ID, symbol, side)
+    if not authorization["authorized"]:
+        log_event(
+            "order_blocked",
+            symbol=symbol,
+            side=side,
+            reasons=authorization["blocking_reasons"],
+        )
+        return {"blocked": True, "authorization": authorization}
     order_id = deterministic_order_id(symbol, event_time, side, strategy="crypto-day-v2")
     if order_id in state["submitted_order_ids"] or _already_exists(api, account_id, order_id):
         log_event("duplicate_order_skipped", symbol=symbol, side=side, order_id=order_id)
@@ -413,9 +424,7 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                     quantity = quantity_for_notional(_buying_power(api, account_id) * ALLOCATION, ask, lot_size)
                     if quantity < min_quantity or quantity * ask < min_amount:
                         raise RuntimeError(f"Calculated {symbol} order is below the instrument minimum")
-                    entered_today.append(symbol)
-                    write_state(state)
-                    _submit_order(
+                    submission = _submit_order(
                         api,
                         account_id,
                         state,
@@ -425,7 +434,12 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                         event_time=candle.time,
                         reason="m5_breakout",
                     )
-                    action = "buy"
+                    if submission.get("blocked"):
+                        action = "blocked"
+                    else:
+                        entered_today.append(symbol)
+                        write_state(state)
+                        action = "buy"
                 state["last_processed_candle"][symbol] = candle_id
                 log_event(
                     "signal_evaluated",
@@ -484,12 +498,18 @@ def status() -> dict[str, Any]:
     runtime_status = "not_started"
     if state:
         runtime_status = "completed" if state["completed"] else ("halted" if state.get("halted") else "running")
+    execution_authorization = authorization_status()
     return {
         "status": runtime_status,
-        "decision": "TRADE" if deployment_symbols else "NO_TRADE",
+        "decision": (
+            "TRADE"
+            if deployment_symbols and execution_authorization["new_entries_authorized"]
+            else "NO_TRADE"
+        ),
         "deployment_symbols": deployment_symbols,
         "mode": "HTTP snapshot polling every 5 seconds; M5 close signals",
         "state": state,
+        "execution_authorization": execution_authorization,
         "launch_agent": {
             "label": LAUNCH_LABEL,
             "plist": str(LAUNCH_PLIST),
@@ -538,6 +558,7 @@ def _deploy_runtime() -> None:
         "crypto_strategy.py",
         "daytrader_runtime.py",
         "daytrader_strategy.py",
+        "execution_guard.py",
         "supertrend_strategy.py",
         "webull_api.py",
         "webull_cli.py",
@@ -553,6 +574,7 @@ def _deploy_runtime() -> None:
         "crypto-backtest-90d.md",
         "daytrader-backtest-90d.json",
         "daytrader-backtest-90d.md",
+        "sandbox-execution-authorization.json",
     ):
         source = ROOT / "reports" / name
         if source.exists():

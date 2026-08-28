@@ -23,6 +23,7 @@ from crypto_strategy import (
     signals,
     webull_bars,
 )
+from execution_guard import authorization_status, authorize_automated_order
 from webull_api import WebullAPI, normalize_result
 from webull_orders import build_order
 
@@ -39,6 +40,7 @@ EXPERIMENT_REPORT = ROOT / "reports" / "crypto-experiment.md"
 LAUNCH_LABEL = "com.jingtianyu.webull-crypto-sandbox"
 LAUNCH_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_LABEL}.plist"
 TERMINAL_ORDER_STATUSES = {"CANCELLED", "CANCELED", "FILLED", "FINAL_FILLED", "FAILED"}
+STRATEGY_ID = "crypto-ema-ha-v1"
 
 
 def utc_now() -> datetime:
@@ -244,6 +246,15 @@ def submit_market_order(
     reason: str,
     estimated_loss: bool = False,
 ) -> dict[str, Any]:
+    authorization = authorize_automated_order(STRATEGY_ID, symbol, side)
+    if not authorization["authorized"]:
+        log_event(
+            "order_blocked",
+            symbol=symbol,
+            side=side,
+            reasons=authorization["blocking_reasons"],
+        )
+        return {"blocked": True, "authorization": authorization}
     order_id = deterministic_order_id(symbol, candle_time, side)
     if order_id in state["submitted_order_ids"] or _already_exists(api, account_id, order_id):
         log_event("duplicate_order_skipped", symbol=symbol, side=side, order_id=order_id)
@@ -409,7 +420,7 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                 quantity = quantity_for_notional(buying_power * ALLOCATION, ask, lot_size)
                 if quantity < min_quantity or quantity * ask < min_amount:
                     raise RuntimeError(f"Calculated {symbol} order is below the instrument minimum")
-                submit_market_order(
+                submission = submit_market_order(
                     api,
                     account_id,
                     state,
@@ -419,7 +430,7 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                     candle_time=candle.time,
                     reason="ema_entry",
                 )
-                action = "buy"
+                action = "blocked" if submission.get("blocked") else "buy"
             state["last_processed_candle"][symbol] = candle_id
             log_event(
                 "signal_evaluated",
@@ -444,10 +455,18 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
 def status() -> dict[str, Any]:
     state = read_state()
     report = load_report()
+    deployment_symbols = list(report.get("deployment_symbols", []))
+    execution_authorization = authorization_status()
     return {
         "status": "not_started" if not state else ("completed" if state["completed"] else "running"),
-        "deployment_symbols": report.get("deployment_symbols", []),
+        "decision": (
+            "TRADE"
+            if deployment_symbols and execution_authorization["new_entries_authorized"]
+            else "NO_TRADE"
+        ),
+        "deployment_symbols": deployment_symbols,
         "state": state,
+        "execution_authorization": execution_authorization,
         "launch_agent": {
             "label": LAUNCH_LABEL,
             "plist": str(LAUNCH_PLIST),
@@ -510,6 +529,10 @@ def _deploy_runtime() -> None:
         "config.py",
         "crypto_runtime.py",
         "crypto_strategy.py",
+        "daytrader_runtime.py",
+        "daytrader_strategy.py",
+        "execution_guard.py",
+        "supertrend_strategy.py",
         "webull_api.py",
         "webull_cli.py",
         "webull_orders.py",
@@ -520,7 +543,13 @@ def _deploy_runtime() -> None:
         shutil.copy2(ROOT / name, DEPLOY_DIR / name)
     report_dir = DEPLOY_DIR / "reports"
     report_dir.mkdir(exist_ok=True)
-    for name in ("crypto-backtest-90d.json", "crypto-backtest-90d.md"):
+    for name in (
+        "crypto-backtest-90d.json",
+        "crypto-backtest-90d.md",
+        "daytrader-backtest-90d.json",
+        "daytrader-backtest-90d.md",
+        "sandbox-execution-authorization.json",
+    ):
         source = ROOT / "reports" / name
         if source.exists():
             shutil.copy2(source, report_dir / name)
