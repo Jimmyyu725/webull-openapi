@@ -24,6 +24,7 @@ from crypto_runtime import (
     _already_exists,
     _buying_power,
     _instrument_rule,
+    _managed_position_quantity,
     _order_status,
     _open_order_count,
     _position_map,
@@ -99,6 +100,13 @@ def initialize_state(now: Optional[datetime] = None) -> dict[str, Any]:
     if existing:
         if existing.get("strategy") != "crypto-day-v2":
             raise RuntimeError("Existing day-trader state predates the professional deployment gate")
+        if "managed_positions" not in existing:
+            existing["version"] = 3
+            existing["managed_positions"] = {}
+            write_state(existing)
+            log_event("state_migrated", version=3, ownership_default="unmanaged")
+        elif not isinstance(existing["managed_positions"], dict):
+            raise RuntimeError("Managed position state is unreadable")
         return existing
     report = load_report()
     symbols = list(report.get("deployment_symbols", []))
@@ -112,7 +120,7 @@ def initialize_state(now: Optional[datetime] = None) -> dict[str, Any]:
         raise RuntimeError("A deployment symbol does not satisfy the professional gate")
     now = now or utc_now()
     state = {
-        "version": 2,
+        "version": 3,
         "strategy": "crypto-day-v2",
         "started_at": now.isoformat(),
         "ends_at": (now + timedelta(days=30)).isoformat(),
@@ -120,6 +128,7 @@ def initialize_state(now: Optional[datetime] = None) -> dict[str, Any]:
         "last_bar_check_bucket": None,
         "last_processed_candle": {},
         "pending_orders": {},
+        "managed_positions": {},
         "submitted_order_ids": [],
         "entry_times": {},
         "entries_by_day": {},
@@ -171,6 +180,11 @@ def _submit_order(
         if side.upper() == "BUY"
         else {}
     )
+    ownership = (
+        {"managed_position_quantity": _managed_position_quantity(state, symbol)}
+        if side.upper() == "SELL"
+        else {}
+    )
     authorization = authorize_automated_order(
         STRATEGY_ID,
         symbol,
@@ -182,6 +196,7 @@ def _submit_order(
         ),
         order_quantity=quantity,
         current_open_order_count=current_open_order_count,
+        **ownership,
         **capital,
     )
     if not authorization["authorized"]:
@@ -260,7 +275,21 @@ def _reconcile_pending(
 ) -> None:
     for symbol, pending in list(state["pending_orders"].items()):
         side = pending["side"]
-        resolved = (side == "BUY" and symbol in positions) or (side == "SELL" and symbol not in positions)
+        position = positions.get(symbol)
+        position_quantity = (
+            Decimal(str(position["quantity"])) if position is not None else Decimal("0")
+        )
+        pending_quantity = Decimal(str(pending["quantity"]))
+        managed_quantity = _managed_position_quantity(state, symbol)
+        resolved = (
+            side == "BUY"
+            and position is not None
+            and position_quantity == pending_quantity
+        ) or (
+            side == "SELL"
+            and managed_quantity is not None
+            and managed_quantity - pending_quantity == position_quantity
+        )
         status = ""
         if not resolved:
             try:
@@ -272,9 +301,23 @@ def _reconcile_pending(
         age = now - datetime.fromisoformat(pending["submitted_at"])
         if resolved:
             if side == "BUY":
+                state["managed_positions"][symbol] = {
+                    "quantity": pending["quantity"],
+                    "entry_order_id": pending["order_id"],
+                    "opened_at": pending["submitted_at"],
+                }
                 state["entry_times"][symbol] = pending["submitted_at"]
             else:
-                state["entry_times"].pop(symbol, None)
+                if position_quantity == 0:
+                    state["managed_positions"].pop(symbol, None)
+                    state["entry_times"].pop(symbol, None)
+                else:
+                    state["managed_positions"][symbol]["quantity"] = format(
+                        position_quantity, "f"
+                    )
+                    state["managed_positions"][symbol]["last_exit_order_id"] = pending[
+                        "order_id"
+                    ]
                 if pending.get("estimated_loss"):
                     state["daily_losses"] += 1
             del state["pending_orders"][symbol]

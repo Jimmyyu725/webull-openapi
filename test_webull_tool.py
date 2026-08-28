@@ -2635,6 +2635,7 @@ class ExecutionAuthorizationTests(unittest.TestCase):
                 "SELL",
                 policy_file=missing,
                 current_position_quantity=Decimal("2"),
+                managed_position_quantity=Decimal("2"),
                 order_quantity=Decimal("1"),
                 current_open_order_count=0,
             )
@@ -2682,6 +2683,7 @@ class ExecutionAuthorizationTests(unittest.TestCase):
             "BTCUSD",
             "SELL",
             current_position_quantity=Decimal("1"),
+            managed_position_quantity=Decimal("1"),
             order_quantity=Decimal("1"),
             current_open_order_count=0,
         )
@@ -2697,6 +2699,38 @@ class ExecutionAuthorizationTests(unittest.TestCase):
         self.assertIn("open_orders_present", pending["blocking_reasons"])
         self.assertTrue(exact["authorized"])
         self.assertEqual(exact["mode"], "RISK_REDUCTION")
+
+    def test_sell_requires_strategy_ownership_and_exact_account_match(self):
+        manual = authorize_automated_order(
+            "any",
+            "BTCUSD",
+            "SELL",
+            current_position_quantity=Decimal("1"),
+            order_quantity=Decimal("1"),
+            current_open_order_count=0,
+        )
+        invalid = authorize_automated_order(
+            "any",
+            "BTCUSD",
+            "SELL",
+            current_position_quantity=Decimal("1"),
+            managed_position_quantity=Decimal("0"),
+            order_quantity=Decimal("1"),
+            current_open_order_count=0,
+        )
+        mismatch = authorize_automated_order(
+            "any",
+            "BTCUSD",
+            "SELL",
+            current_position_quantity=Decimal("1.1"),
+            managed_position_quantity=Decimal("1"),
+            order_quantity=Decimal("1"),
+            current_open_order_count=0,
+        )
+
+        self.assertEqual(manual["blocking_reasons"], ["position_ownership_unverified"])
+        self.assertEqual(invalid["blocking_reasons"], ["position_not_owned_by_strategy"])
+        self.assertEqual(mismatch["blocking_reasons"], ["position_ownership_mismatch"])
 
     def test_buy_requires_fresh_flat_account_state_and_positive_quantity(self):
         now = datetime(2026, 1, 20, tzinfo=timezone.utc)
@@ -2941,6 +2975,21 @@ class CryptoRuntimeTests(unittest.TestCase):
             run_once(api, confirmed=True, now=now + timedelta(minutes=1))
         self.assertEqual(len(api.place_calls), 1)
 
+    def test_legacy_state_migrates_without_claiming_existing_positions(self):
+        from crypto_runtime import initialize_state, read_state, write_state
+
+        write_state({
+            "version": 1,
+            "started_at": "2026-01-01T00:00:00+00:00",
+            "pending_orders": {},
+        })
+
+        state = initialize_state(datetime(2026, 1, 20, tzinfo=timezone.utc))
+
+        self.assertEqual(state["version"], 2)
+        self.assertEqual(state["managed_positions"], {})
+        self.assertEqual(read_state()["managed_positions"], {})
+
     def test_execution_guard_blocks_entry_before_order_submission(self):
         from crypto_runtime import initialize_state, submit_market_order
 
@@ -2971,6 +3020,7 @@ class CryptoRuntimeTests(unittest.TestCase):
 
         api = FakeCryptoAPI(positions=[{"symbol": "BTCUSD", "quantity": "0.01"}])
         state = initialize_state(datetime(2026, 1, 20, tzinfo=timezone.utc))
+        state["managed_positions"]["BTCUSD"] = {"quantity": "0.01"}
         submit_market_order(
             api,
             "crypto-account",
@@ -2987,6 +3037,7 @@ class CryptoRuntimeTests(unittest.TestCase):
             "BTCUSD",
             "SELL",
             current_position_quantity=Decimal("0.01"),
+            managed_position_quantity=Decimal("0.01"),
             order_quantity=Decimal("0.01"),
             current_open_order_count=0,
         )
@@ -3162,6 +3213,7 @@ class CryptoRuntimeTests(unittest.TestCase):
 
         now = datetime(2026, 1, 20, tzinfo=timezone.utc)
         state = initialize_state(now - timedelta(days=31))
+        state["managed_positions"]["BTCUSD"] = {"quantity": "0.01"}
         write_state(state)
         api = FakeCryptoAPI(positions=[{
             "symbol": "BTCUSD",
@@ -3173,12 +3225,99 @@ class CryptoRuntimeTests(unittest.TestCase):
         self.assertEqual(result["status"], "closing")
         self.assertEqual(api.place_calls[0][1][0]["side"], "SELL")
 
+    def test_expiration_does_not_sell_unmanaged_position(self):
+        from crypto_runtime import initialize_state, run_once, write_state
+
+        self.authorization.side_effect = authorize_automated_order
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        state = initialize_state(now - timedelta(days=31))
+        write_state(state)
+        api = FakeCryptoAPI(positions=[{
+            "symbol": "BTCUSD",
+            "quantity": "0.01",
+            "cost_price": "100",
+            "unrealized_profit_loss": "1",
+        }])
+
+        result = run_once(api, confirmed=True, now=now)
+
+        self.assertEqual(result["status"], "closing")
+        self.assertEqual(api.place_calls, [])
+
+    def test_reconcile_registers_only_exact_strategy_buy_and_clears_sell(self):
+        from crypto_runtime import initialize_state, reconcile_pending
+
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        state = initialize_state(now)
+        state["pending_orders"]["BTCUSD"] = {
+            "order_id": "buy-one",
+            "side": "BUY",
+            "quantity": "1",
+            "reason": "test",
+            "estimated_loss": False,
+            "submitted_at": now.isoformat(),
+        }
+        reconcile_pending(
+            FakeCryptoAPI(),
+            "crypto-account",
+            state,
+            {"BTCUSD": {"symbol": "BTCUSD", "quantity": "1"}},
+            now,
+        )
+        self.assertEqual(state["managed_positions"]["BTCUSD"]["quantity"], "1")
+
+        state["pending_orders"]["BTCUSD"] = {
+            "order_id": "sell-part",
+            "side": "SELL",
+            "quantity": "0.4",
+            "reason": "test",
+            "estimated_loss": False,
+            "submitted_at": now.isoformat(),
+        }
+        reconcile_pending(
+            FakeCryptoAPI(),
+            "crypto-account",
+            state,
+            {"BTCUSD": {"symbol": "BTCUSD", "quantity": "0.6"}},
+            now,
+        )
+        self.assertEqual(state["managed_positions"]["BTCUSD"]["quantity"], "0.6")
+
+        state["pending_orders"]["BTCUSD"] = {
+            "order_id": "sell-rest",
+            "side": "SELL",
+            "quantity": "0.6",
+            "reason": "test",
+            "estimated_loss": False,
+            "submitted_at": now.isoformat(),
+        }
+        reconcile_pending(FakeCryptoAPI(), "crypto-account", state, {}, now)
+        self.assertNotIn("BTCUSD", state["managed_positions"])
+
+        state["pending_orders"]["BTCUSD"] = {
+            "order_id": "buy-mismatch",
+            "side": "BUY",
+            "quantity": "1",
+            "reason": "test",
+            "estimated_loss": False,
+            "submitted_at": now.isoformat(),
+        }
+        reconcile_pending(
+            FakeCryptoAPI(),
+            "crypto-account",
+            state,
+            {"BTCUSD": {"symbol": "BTCUSD", "quantity": "2"}},
+            now,
+        )
+        self.assertNotIn("BTCUSD", state["managed_positions"])
+
     def test_three_losses_start_24_hour_cooldown(self):
         from crypto_runtime import initialize_state, reconcile_pending
 
         now = datetime(2026, 1, 20, tzinfo=timezone.utc)
         state = initialize_state(now)
         state["consecutive_losses"] = 2
+        state["managed_positions"]["BTCUSD"] = {"quantity": "1"}
         state["pending_orders"]["BTCUSD"] = {
             "order_id": "loss-three",
             "side": "SELL",
@@ -3254,6 +3393,21 @@ class DayTraderRuntimeTests(unittest.TestCase):
         self.assertEqual(len(api.place_calls), 1)
         self.assertEqual(api.place_calls[0][1][0]["symbol"], "BTCUSD")
 
+    def test_daytrader_state_migrates_without_claiming_existing_positions(self):
+        from daytrader_runtime import initialize_state, read_state, write_state
+
+        write_state({
+            "version": 2,
+            "strategy": "crypto-day-v2",
+            "pending_orders": {},
+        })
+
+        state = initialize_state(datetime(2026, 1, 20, tzinfo=timezone.utc))
+
+        self.assertEqual(state["version"], 3)
+        self.assertEqual(state["managed_positions"], {})
+        self.assertEqual(read_state()["managed_positions"], {})
+
     def test_daytrader_guard_blocks_entry_without_consuming_daily_limit(self):
         from daytrader_runtime import read_state, run_once
 
@@ -3278,6 +3432,7 @@ class DayTraderRuntimeTests(unittest.TestCase):
         api = FakeCryptoAPI(positions=[{"symbol": "BTCUSD", "quantity": "0.02"}])
         now = datetime(2026, 1, 20, tzinfo=timezone.utc)
         state = initialize_state(now)
+        state["managed_positions"]["BTCUSD"] = {"quantity": "0.02"}
         _submit_order(
             api,
             "crypto-account",
@@ -3294,6 +3449,7 @@ class DayTraderRuntimeTests(unittest.TestCase):
             "BTCUSD",
             "SELL",
             current_position_quantity=Decimal("0.02"),
+            managed_position_quantity=Decimal("0.02"),
             order_quantity=Decimal("0.01"),
             current_open_order_count=0,
         )
@@ -3326,6 +3482,57 @@ class DayTraderRuntimeTests(unittest.TestCase):
             current_buying_power=Decimal("1000000"),
             order_reference_price=Decimal("100"),
         )
+
+    def test_daytrader_does_not_sell_unmanaged_position(self):
+        from daytrader_runtime import _submit_order, initialize_state
+
+        self.authorization.side_effect = authorize_automated_order
+        api = FakeCryptoAPI(positions=[{"symbol": "BTCUSD", "quantity": "0.02"}])
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        state = initialize_state(now)
+
+        result = _submit_order(
+            api,
+            "crypto-account",
+            state,
+            symbol="BTCUSD",
+            side="SELL",
+            quantity=Decimal("0.02"),
+            event_time=now,
+            reason="test",
+        )
+
+        self.assertTrue(result["blocked"])
+        self.assertEqual(
+            result["authorization"]["blocking_reasons"],
+            ["position_ownership_unverified"],
+        )
+        self.assertEqual(api.place_calls, [])
+
+    def test_daytrader_reconcile_persists_position_ownership(self):
+        from daytrader_runtime import _reconcile_pending, initialize_state
+
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        state = initialize_state(now)
+        state["pending_orders"]["BTCUSD"] = {
+            "order_id": "buy-one",
+            "side": "BUY",
+            "quantity": "1",
+            "reason": "test",
+            "estimated_loss": False,
+            "submitted_at": now.isoformat(),
+        }
+
+        _reconcile_pending(
+            FakeCryptoAPI(),
+            "crypto-account",
+            state,
+            {"BTCUSD": {"symbol": "BTCUSD", "quantity": "1"}},
+            now,
+        )
+
+        self.assertEqual(state["managed_positions"]["BTCUSD"]["entry_order_id"], "buy-one")
+        self.assertEqual(state["entry_times"]["BTCUSD"], now.isoformat())
 
     def test_daytrader_status_requires_capital_authorization(self):
         from daytrader_runtime import status

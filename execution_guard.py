@@ -108,6 +108,7 @@ def authorize_automated_order(
     policy_file: Optional[Path] = None,
     now: Optional[datetime] = None,
     current_position_quantity: Optional[Decimal] = None,
+    managed_position_quantity: Optional[Decimal] = None,
     order_quantity: Optional[Decimal] = None,
     current_open_order_count: Optional[int] = None,
     current_buying_power: Optional[Decimal] = None,
@@ -154,6 +155,24 @@ def authorize_automated_order(
                 "authorized": False,
                 "mode": "BLOCKED",
                 "blocking_reasons": ["sell_exceeds_verified_long_position"],
+            }
+        if managed_position_quantity is None:
+            return {
+                "authorized": False,
+                "mode": "BLOCKED",
+                "blocking_reasons": ["position_ownership_unverified"],
+            }
+        if not managed_position_quantity.is_finite() or managed_position_quantity <= 0:
+            return {
+                "authorized": False,
+                "mode": "BLOCKED",
+                "blocking_reasons": ["position_not_owned_by_strategy"],
+            }
+        if current_position_quantity != managed_position_quantity:
+            return {
+                "authorized": False,
+                "mode": "BLOCKED",
+                "blocking_reasons": ["position_ownership_mismatch"],
             }
         return {"authorized": True, "mode": "RISK_REDUCTION", "blocking_reasons": []}
     if normalized_side != "BUY":

@@ -90,6 +90,13 @@ def strategy_lock() -> Iterator[None]:
 def initialize_state(now: Optional[datetime] = None) -> dict[str, Any]:
     existing = read_state()
     if existing:
+        if "managed_positions" not in existing:
+            existing["version"] = 2
+            existing["managed_positions"] = {}
+            write_state(existing)
+            log_event("state_migrated", version=2, ownership_default="unmanaged")
+        elif not isinstance(existing["managed_positions"], dict):
+            raise RuntimeError("Managed position state is unreadable")
         return existing
     report = load_report()
     eligible = list(report.get("deployment_symbols", []))
@@ -97,12 +104,13 @@ def initialize_state(now: Optional[datetime] = None) -> dict[str, Any]:
         raise RuntimeError("No symbol passed the Webull M120 deployment gate")
     now = now or utc_now()
     state = {
-        "version": 1,
+        "version": 2,
         "started_at": now.isoformat(),
         "ends_at": (now + timedelta(days=30)).isoformat(),
         "eligible_symbols": eligible,
         "last_processed_candle": {},
         "pending_orders": {},
+        "managed_positions": {},
         "submitted_order_ids": [],
         "consecutive_losses": 0,
         "cooldown_until": None,
@@ -161,6 +169,15 @@ def _buying_power(api: WebullAPI, account_id: str) -> Decimal:
     return Decimal(str(usd["buying_power"]))
 
 
+def _managed_position_quantity(
+    state: dict[str, Any], symbol: str
+) -> Optional[Decimal]:
+    try:
+        return Decimal(str(state["managed_positions"][symbol]["quantity"]))
+    except (ArithmeticError, KeyError, TypeError, ValueError):
+        return None
+
+
 def _snapshots(api: WebullAPI, symbols: list[str]) -> dict[str, dict[str, Any]]:
     data = _api_data(api.data.crypto_market_data.get_crypto_snapshot(symbols), "Snapshot query")
     return {str(item["symbol"]): item for item in data or []}
@@ -196,7 +213,21 @@ def reconcile_pending(
 ) -> None:
     for symbol, pending in list(state["pending_orders"].items()):
         side = pending["side"]
-        resolved = (side == "BUY" and symbol in positions) or (side == "SELL" and symbol not in positions)
+        position = positions.get(symbol)
+        position_quantity = (
+            Decimal(str(position["quantity"])) if position is not None else Decimal("0")
+        )
+        pending_quantity = Decimal(str(pending["quantity"]))
+        managed_quantity = _managed_position_quantity(state, symbol)
+        resolved = (
+            side == "BUY"
+            and position is not None
+            and position_quantity == pending_quantity
+        ) or (
+            side == "SELL"
+            and managed_quantity is not None
+            and managed_quantity - pending_quantity == position_quantity
+        )
         status = ""
         if not resolved:
             try:
@@ -207,7 +238,22 @@ def reconcile_pending(
                 status = ""
         age = now - datetime.fromisoformat(pending["submitted_at"])
         if resolved:
-            if side == "SELL":
+            if side == "BUY":
+                state["managed_positions"][symbol] = {
+                    "quantity": pending["quantity"],
+                    "entry_order_id": pending["order_id"],
+                    "opened_at": pending["submitted_at"],
+                }
+            else:
+                if position_quantity == 0:
+                    state["managed_positions"].pop(symbol, None)
+                else:
+                    state["managed_positions"][symbol]["quantity"] = format(
+                        position_quantity, "f"
+                    )
+                    state["managed_positions"][symbol]["last_exit_order_id"] = pending[
+                        "order_id"
+                    ]
                 if pending.get("estimated_loss"):
                     state["consecutive_losses"] += 1
                 else:
@@ -269,6 +315,11 @@ def submit_market_order(
         if side.upper() == "BUY"
         else {}
     )
+    ownership = (
+        {"managed_position_quantity": _managed_position_quantity(state, symbol)}
+        if side.upper() == "SELL"
+        else {}
+    )
     authorization = authorize_automated_order(
         STRATEGY_ID,
         symbol,
@@ -280,6 +331,7 @@ def submit_market_order(
         ),
         order_quantity=quantity,
         current_open_order_count=current_open_order_count,
+        **ownership,
         **capital,
     )
     if not authorization["authorized"]:
