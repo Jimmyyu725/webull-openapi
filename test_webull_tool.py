@@ -32,6 +32,7 @@ from equity_orb_strategy import (
     BASE_COST as ORB_BASE_COST,
     Session,
     _features as orb_features,
+    _opening_bar,
     _quantity as orb_quantity,
     _trade_session as trade_orb_session,
     build_sessions as build_stock_sessions,
@@ -466,6 +467,22 @@ class EquityOrbStrategyTests(unittest.TestCase):
         feature = orb_features(sessions)[sessions[-1].day]
         self.assertEqual(feature["average_opening_volume"], Decimal("100"))
 
+    def test_m1_session_aggregates_first_five_minutes(self):
+        start = datetime(2026, 1, 5, 14, 30, tzinfo=timezone.utc)
+        bars = [
+            Bar(
+                start + timedelta(minutes=index),
+                Decimal("100"), Decimal(str(101 + index)), Decimal("99"), Decimal("100"), Decimal("10"),
+            )
+            for index in range(390)
+        ]
+        sessions, quality = build_stock_sessions(bars, interval_seconds=60)
+        opening, count = _opening_bar(sessions[0])
+        self.assertTrue(quality.passed is False)
+        self.assertEqual(count, 5)
+        self.assertEqual(opening.high, Decimal("105"))
+        self.assertEqual(opening.volume, Decimal("50"))
+
     def test_orb_same_bar_entry_and_stop_uses_conservative_stop(self):
         opening = Bar(
             datetime(2026, 1, 5, 14, 30, tzinfo=timezone.utc),
@@ -525,6 +542,38 @@ class EquityOrbStrategyTests(unittest.TestCase):
         self.assertEqual(market.calls[1][4]["end_time"], 1767312000000)
         self.assertEqual(len(bars["QQQ"]), 2)
         self.assertEqual(ORB_BASE_COST, Decimal("0.0005"))
+
+    def test_stock_pagination_uses_latest_symbol_page_tail(self):
+        class MarketData:
+            def __init__(self):
+                self.calls = []
+
+            def get_batch_history_bar(self, symbols, category, timespan, count, **kwargs):
+                self.calls.append(kwargs["end_time"])
+                if len(self.calls) == 1:
+                    rows = {
+                        "QQQ": [{"time": "2026-01-02T00:00:00.000+0000", "open": "100", "high": "101", "low": "99", "close": "100", "volume": "1"}],
+                        "XOM": [{"time": "2026-01-01T00:00:00.000+0000", "open": "100", "high": "101", "low": "99", "close": "100", "volume": "1"}],
+                    }
+                else:
+                    rows = {
+                        symbol: [{"time": "2026-01-01T00:00:00.000+0000", "open": "100", "high": "101", "low": "99", "close": "100", "volume": "1"}]
+                        for symbol in symbols
+                    }
+                return FakeResponse(200, {"result": [{"symbol": symbol, "result": rows[symbol]} for symbol in symbols]})
+
+        market = MarketData()
+        api = SimpleNamespace(data=SimpleNamespace(market_data=market))
+        with tempfile.TemporaryDirectory() as directory:
+            webull_stock_bars(
+                api,
+                symbols=("QQQ", "XOM"),
+                days=2,
+                now=datetime(2026, 1, 3, tzinfo=timezone.utc),
+                cache_dir=Path(directory),
+            )
+        self.assertEqual(len(market.calls), 2)
+        self.assertEqual(market.calls[1], 1767312000000)
 
 
 class FakeResponse:

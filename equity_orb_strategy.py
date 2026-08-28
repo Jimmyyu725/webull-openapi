@@ -31,6 +31,8 @@ EASTERN = ZoneInfo("America/New_York")
 CACHE_DIR = Path(__file__).parent / ".cache" / "equity-orb"
 REPORT_JSON = Path(__file__).parent / "reports" / "equity-orb-backtest-90d.json"
 REPORT_MARKDOWN = Path(__file__).parent / "reports" / "equity-orb-backtest-90d.md"
+M1_REPORT_JSON = Path(__file__).parent / "reports" / "equity-orb-m1-holdout-90d.json"
+M1_REPORT_MARKDOWN = Path(__file__).parent / "reports" / "equity-orb-m1-holdout-90d.md"
 
 
 @dataclass(frozen=True)
@@ -122,15 +124,19 @@ def webull_stock_bars(
     symbols: Iterable[str] = DATA_SYMBOLS,
     days: int = 90,
     now: Optional[datetime] = None,
+    timespan: str = "M5",
     cache_dir: Path = CACHE_DIR,
 ) -> dict[str, list[Bar]]:
+    interval_seconds = {"M1": 60, "M5": 300}.get(timespan)
+    if interval_seconds is None:
+        raise ValueError("Stock ORB data supports only M1 or M5")
     symbols = tuple(symbols)
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    end = floor_time(now, INTERVAL_SECONDS)
+    end = floor_time(now, interval_seconds)
     start = end - timedelta(days=days)
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_key = hashlib.sha256(
-        f"{','.join(symbols)}:{int(start.timestamp())}:{int(end.timestamp())}:M5:v2".encode()
+        f"{','.join(symbols)}:{int(start.timestamp())}:{int(end.timestamp())}:{timespan}:v4".encode()
     ).hexdigest()[:16]
     cache_file = cache_dir / f"webull-stock-{cache_key}.json"
     if cache_file.exists():
@@ -143,7 +149,7 @@ def webull_stock_bars(
         response = normalize_result(api.data.market_data.get_batch_history_bar(
             list(symbols),
             "US_STOCK",
-            "M5",
+            timespan,
             "1200",
             end_time=int(cursor.timestamp() * 1000),
         ))
@@ -153,13 +159,16 @@ def webull_stock_bars(
         by_symbol = {str(item.get("symbol")): item.get("result", []) for item in items}
         if any(symbol not in by_symbol or not by_symbol[symbol] for symbol in symbols):
             raise RuntimeError("Webull stock bar response omitted a requested symbol")
-        oldest: Optional[datetime] = None
+        page_oldest: list[datetime] = []
         for symbol in symbols:
             page = [_parse_bar(row) for row in by_symbol[symbol]]
             collected[symbol].extend(page)
-            page_oldest = min(bar.time for bar in page)
-            oldest = page_oldest if oldest is None else min(oldest, page_oldest)
-        if oldest is None or oldest <= start:
+            page_oldest.append(min(bar.time for bar in page))
+        # Symbols can have different page tails when a minute has no prints.
+        # Use the latest tail so no symbol's missing interval is skipped; the
+        # resulting overlap is removed below by timestamp.
+        oldest = max(page_oldest)
+        if oldest <= start:
             break
         # The endpoint treats end_time as exclusive. Reusing the oldest bar's
         # timestamp returns the immediately preceding bar without a gap.
@@ -173,7 +182,7 @@ def webull_stock_bars(
         unique = {bar.time: bar for bar in raw}
         output[symbol] = [
             bar for bar in sorted(unique.values(), key=lambda item: item.time)
-            if start <= bar.time < end and bar.time + timedelta(seconds=INTERVAL_SECONDS) <= now
+            if start <= bar.time < end and bar.time + timedelta(seconds=interval_seconds) <= now
         ]
     temporary = cache_file.with_suffix(".tmp")
     temporary.write_text(
@@ -184,7 +193,13 @@ def webull_stock_bars(
     return output
 
 
-def build_sessions(bars: list[Bar]) -> tuple[list[Session], StockQuality]:
+def build_sessions(
+    bars: list[Bar],
+    *,
+    interval_seconds: int = INTERVAL_SECONDS,
+) -> tuple[list[Session], StockQuality]:
+    if interval_seconds not in {60, 300}:
+        raise ValueError("Stock sessions support only one- or five-minute bars")
     unique: dict[datetime, Bar] = {}
     duplicates = 0
     for bar in bars:
@@ -194,7 +209,7 @@ def build_sessions(bars: list[Bar]) -> tuple[list[Session], StockQuality]:
     grouped: dict[date, list[Bar]] = {}
     for bar in sorted(unique.values(), key=lambda item: item.time):
         local = bar.time.astimezone(EASTERN)
-        if (local.hour, local.minute) < (9, 30) or (local.hour, local.minute) > (15, 55):
+        if (local.hour, local.minute) < (9, 30) or (local.hour, local.minute) > (15, 59):
             continue
         grouped.setdefault(local.date(), []).append(bar)
 
@@ -205,15 +220,20 @@ def build_sessions(bars: list[Bar]) -> tuple[list[Session], StockQuality]:
         day_bars = grouped[day]
         local_times = [bar.time.astimezone(EASTERN) for bar in day_bars]
         contiguous = all(
-            int((right.time - left.time).total_seconds()) == INTERVAL_SECONDS
+            int((right.time - left.time).total_seconds()) == interval_seconds
             for left, right in zip(day_bars, day_bars[1:])
         )
-        normal = len(day_bars) == 78 and (local_times[0].hour, local_times[0].minute) == (9, 30) and (
+        normal_count = 23400 // interval_seconds
+        early_count = 12600 // interval_seconds
+        interval_minutes = interval_seconds // 60
+        normal_last = divmod(16 * 60 - interval_minutes, 60)
+        early_last = divmod(13 * 60 - interval_minutes, 60)
+        normal = len(day_bars) == normal_count and (local_times[0].hour, local_times[0].minute) == (9, 30) and (
             local_times[-1].hour, local_times[-1].minute
-        ) == (15, 55)
-        early = len(day_bars) == 42 and (local_times[0].hour, local_times[0].minute) == (9, 30) and (
+        ) == normal_last
+        early = len(day_bars) == early_count and (local_times[0].hour, local_times[0].minute) == (9, 30) and (
             local_times[-1].hour, local_times[-1].minute
-        ) == (12, 55)
+        ) == early_last
         if contiguous and (normal or early):
             complete.append(Session(day, tuple(day_bars)))
         else:
@@ -253,6 +273,22 @@ def _true_ranges(sessions: list[Session]) -> list[Decimal]:
     return output
 
 
+def _opening_bar(session: Session) -> tuple[Bar, int]:
+    if len(session.bars) < 2:
+        raise ValueError("A complete session needs at least two bars")
+    interval = int((session.bars[1].time - session.bars[0].time).total_seconds())
+    count = 300 // interval
+    opening = session.bars[:count]
+    return Bar(
+        time=opening[0].time,
+        open=opening[0].open,
+        high=max(bar.high for bar in opening),
+        low=min(bar.low for bar in opening),
+        close=opening[-1].close,
+        volume=sum((bar.volume for bar in opening), Decimal("0")),
+    ), count
+
+
 def _features(sessions: list[Session]) -> dict[date, dict[str, Decimal]]:
     ranges = _true_ranges(sessions)
     result = {}
@@ -261,7 +297,7 @@ def _features(sessions: list[Session]) -> dict[date, dict[str, Decimal]]:
         result[sessions[index].day] = {
             "atr": sum(ranges[index - LOOKBACK:index], Decimal("0")) / Decimal(LOOKBACK),
             "average_volume": sum((item.volume for item in history), Decimal("0")) / Decimal(LOOKBACK),
-            "average_opening_volume": sum((item.bars[0].volume for item in history), Decimal("0")) / Decimal(LOOKBACK),
+            "average_opening_volume": sum((_opening_bar(item)[0].volume for item in history), Decimal("0")) / Decimal(LOOKBACK),
         }
     return result
 
@@ -277,7 +313,7 @@ def _candidate(
         feature = features[symbol].get(day)
         if not session or not feature or feature["average_opening_volume"] <= 0:
             continue
-        relative_volume = session.bars[0].volume / feature["average_opening_volume"]
+        relative_volume = _opening_bar(session)[0].volume / feature["average_opening_volume"]
         if (
             session.open > Decimal("5")
             and feature["average_volume"] >= Decimal("1000000")
@@ -304,13 +340,13 @@ def _trade_session(
     equity: Decimal,
     cost: Decimal,
 ) -> Optional[OrbTrade]:
-    opening = session.bars[0]
+    opening, opening_count = _opening_bar(session)
     if opening.close == opening.open:
         return None
     side = "LONG" if opening.close > opening.open else "SHORT"
     trigger = opening.high if side == "LONG" else opening.low
     stop_distance = atr * Decimal("0.10")
-    for bar in session.bars[1:]:
+    for bar in session.bars[opening_count:]:
         triggered = bar.high >= trigger if side == "LONG" else bar.low <= trigger
         if not triggered:
             continue
@@ -427,6 +463,10 @@ def backtest_orb(
         "profit_factor": round(float(gross_profit / gross_loss), 6) if gross_loss else None,
         "max_drawdown": _number(max_drawdown),
         "average_r_multiple": round(sum(float(trade.r_multiple) for trade in trades) / len(trades), 6) if trades else 0.0,
+        "same_bar_stop_count": sum(
+            trade.reason == "stop" and trade.entry_time == trade.exit_time
+            for trade in trades
+        ),
         "benchmark": benchmark,
         "excess_vs_benchmark": round(_number(net_profit) - benchmark["net_profit"], 8),
         "symbols_traded": sorted({trade.symbol for trade in trades}),
@@ -467,15 +507,19 @@ def run_orb_backtest(
     *,
     days: int = 90,
     now: Optional[datetime] = None,
+    timespan: str = "M5",
 ) -> dict[str, Any]:
     if days != 90:
         raise ValueError("The preregistered ORB study is fixed to 90 days")
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    raw = webull_stock_bars(api, days=days, now=now)
+    interval_seconds = {"M1": 60, "M5": 300}.get(timespan)
+    if interval_seconds is None:
+        raise ValueError("ORB backtest supports only M1 or M5")
+    raw = webull_stock_bars(api, days=days, now=now, timespan=timespan)
     sessions_by_symbol: dict[str, list[Session]] = {}
     quality = {}
     for symbol in DATA_SYMBOLS:
-        sessions, item_quality = build_sessions(raw[symbol])
+        sessions, item_quality = build_sessions(raw[symbol], interval_seconds=interval_seconds)
         sessions_by_symbol[symbol] = sessions
         quality[symbol] = asdict(item_quality)
     common_days = sorted(set.intersection(*(
@@ -496,7 +540,12 @@ def run_orb_backtest(
     report = {
         "generated_at": now.isoformat(),
         "days": days,
-        "preregistration": "reports/equity-orb-preregistration.md",
+        "timeframe": timespan,
+        "preregistration": (
+            "reports/equity-orb-m1-holdout-preregistration.md"
+            if timespan == "M1"
+            else "reports/equity-orb-preregistration.md"
+        ),
         "candidate_symbols": list(SYMBOLS),
         "benchmark_symbol": BENCHMARK,
         "common_sessions": len(common_days),
@@ -537,27 +586,37 @@ def run_orb_backtest(
     return report
 
 
+def run_orb_m1_holdout_backtest(api: WebullAPI) -> dict[str, Any]:
+    return run_orb_backtest(
+        api,
+        days=90,
+        now=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        timespan="M1",
+    )
+
+
 def markdown_report(report: dict[str, Any]) -> str:
     lines = [
-        "# Webull股票Sandbox ORB专业审查",
+        f"# Webull股票Sandbox ORB {report['timeframe']}专业审查",
         "",
         f"生成时间：{report['generated_at']}",
         f"范围：{report['first_session']}至{report['last_session']}，共{report['common_sessions']}个完整共同交易日。",
         "",
-        "规则已在回测前写入`reports/equity-orb-preregistration.md`；本次只测试一个固定版本。",
+        f"规则已在回测前写入`{report['preregistration']}`；本次只测试一个固定版本。",
         "基准成本为每边5个基点，压力成本为每边10个基点；单笔风险预算0.05%，名义仓位上限10%。",
         "",
         "## 分段结果",
         "",
-        "| 分段 | 成本/边 | 净收益 | 账户收益率 | 交易数 | 胜率 | 利润因子 | 最大回撤 | 平均R | QQQ基准 | 超额收益 |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| 分段 | 成本/边 | 净收益 | 账户收益率 | 交易数 | 同K线止损 | 胜率 | 利润因子 | 最大回撤 | 平均R | QQQ基准 | 超额收益 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for label, key in (("全样本", "full_period"), ("开发段", "development"), ("最终样本外", "out_of_sample")):
         for cost, metrics in report[key]["costs"].items():
             factor = metrics["profit_factor"]
             lines.append(
                 f"| {label} | {float(cost):.2%} | ${metrics['net_profit']:,.2f} | {metrics['account_return']:.3%} | "
-                f"{metrics['trade_count']} | {metrics['win_rate']:.1%} | {'—' if factor is None else f'{factor:.2f}'} | "
+                f"{metrics['trade_count']} | {metrics['same_bar_stop_count']} | {metrics['win_rate']:.1%} | "
+                f"{'—' if factor is None else f'{factor:.2f}'} | "
                 f"{metrics['max_drawdown']:.3%} | {metrics['average_r_multiple']:.2f} | "
                 f"${metrics['benchmark']['net_profit']:,.2f} | ${metrics['excess_vs_benchmark']:,.2f} |"
             )
@@ -581,7 +640,12 @@ def markdown_report(report: dict[str, Any]) -> str:
 
 
 def save_report(report: dict[str, Any]) -> tuple[Path, Path]:
-    REPORT_JSON.parent.mkdir(parents=True, exist_ok=True)
-    REPORT_JSON.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    REPORT_MARKDOWN.write_text(markdown_report(report), encoding="utf-8")
-    return REPORT_JSON, REPORT_MARKDOWN
+    json_path, markdown_path = (
+        (M1_REPORT_JSON, M1_REPORT_MARKDOWN)
+        if report.get("timeframe") == "M1"
+        else (REPORT_JSON, REPORT_MARKDOWN)
+    )
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    markdown_path.write_text(markdown_report(report), encoding="utf-8")
+    return json_path, markdown_path

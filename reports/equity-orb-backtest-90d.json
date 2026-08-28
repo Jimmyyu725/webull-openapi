@@ -1,6 +1,7 @@
 {
-  "generated_at": "2026-08-28T13:57:14.294690+00:00",
+  "generated_at": "2026-08-28T14:02:24.358551+00:00",
   "days": 90,
+  "timeframe": "M5",
   "preregistration": "reports/equity-orb-preregistration.md",
   "candidate_symbols": [
     "AAPL",
@@ -131,6 +132,7 @@
         "profit_factor": 0.382286,
         "max_drawdown": 0.01306791,
         "average_r_multiple": -0.89626,
+        "same_bar_stop_count": 26,
         "benchmark": {
           "net_profit": -2265.183225,
           "account_return": -0.00226518,
@@ -737,6 +739,7 @@
         "profit_factor": 0.302449,
         "max_drawdown": 0.0160642,
         "average_r_multiple": -1.221605,
+        "same_bar_stop_count": 26,
         "benchmark": {
           "net_profit": -2363.61645,
           "account_return": -0.00236362,
@@ -1349,6 +1352,7 @@
         "profit_factor": 0.582791,
         "max_drawdown": 0.00719525,
         "average_r_multiple": -0.517911,
+        "same_bar_stop_count": 15,
         "benchmark": {
           "net_profit": -10277.475075,
           "account_return": -0.01027748,
@@ -1377,6 +1381,7 @@
         "profit_factor": 0.462881,
         "max_drawdown": 0.00871232,
         "average_r_multiple": -0.836293,
+        "same_bar_stop_count": 15,
         "benchmark": {
           "net_profit": -10371.90015,
           "account_return": -0.0103719,
@@ -1411,6 +1416,7 @@
         "profit_factor": 0.137906,
         "max_drawdown": 0.00591589,
         "average_r_multiple": -1.369196,
+        "same_bar_stop_count": 11,
         "benchmark": {
           "net_profit": 6849.79224,
           "account_return": 0.00684979,
@@ -1695,6 +1701,7 @@
         "profit_factor": 0.106915,
         "max_drawdown": 0.00742281,
         "average_r_multiple": -1.703244,
+        "same_bar_stop_count": 11,
         "benchmark": {
           "net_profit": 6746.54448,
           "account_return": 0.00674654,
@@ -1983,6 +1990,7 @@
         "profit_factor": 4.405099,
         "max_drawdown": 0.00110118,
         "average_r_multiple": 2.900276,
+        "same_bar_stop_count": 2,
         "benchmark": {
           "net_profit": -1864.4337,
           "account_return": -0.00186443,
@@ -2004,6 +2012,7 @@
         "profit_factor": 0.0,
         "max_drawdown": 0.00719088,
         "average_r_multiple": -1.372458,
+        "same_bar_stop_count": 13,
         "benchmark": {
           "net_profit": -6814.41654,
           "account_return": -0.00681442,
@@ -2029,6 +2038,7 @@
         "profit_factor": 0.137906,
         "max_drawdown": 0.00591589,
         "average_r_multiple": -1.369196,
+        "same_bar_stop_count": 11,
         "benchmark": {
           "net_profit": 6716.52564,
           "account_return": 0.00671653,
@@ -2057,6 +2067,7 @@
         "profit_factor": 3.572582,
         "max_drawdown": 0.00130117,
         "average_r_multiple": 2.622168,
+        "same_bar_stop_count": 2,
         "benchmark": {
           "net_profit": -1963.0674,
           "account_return": -0.00196307,
@@ -2078,6 +2089,7 @@
         "profit_factor": 0.0,
         "max_drawdown": 0.00871118,
         "average_r_multiple": -1.700909,
+        "same_bar_stop_count": 13,
         "benchmark": {
           "net_profit": -6860.91342,
           "account_return": -0.00686091,
@@ -2103,6 +2115,7 @@
         "profit_factor": 0.106915,
         "max_drawdown": 0.00742281,
         "average_r_multiple": -1.703244,
+        "same_bar_stop_count": 11,
         "benchmark": {
           "net_profit": 6568.52742,
           "account_return": 0.00656853,

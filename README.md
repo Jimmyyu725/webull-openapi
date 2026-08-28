@@ -281,7 +281,12 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 
 ```bash
 .venv/bin/python webull_cli.py equity-strategy orb-backtest --days 90
+.venv/bin/python webull_cli.py equity-strategy orb-m1-holdout-backtest
 ```
+
+五分钟版本若因同一根K线内的入场/止损顺序无法识别而失败，可运行预注册的M1独立复核。该复核只提高执行路径分辨率，使用此前未查看的固定历史窗口，不能修改原五分钟失败结论；详细约束见`reports/equity-orb-m1-holdout-preregistration.md`。
+
+当前两个独立窗口均为`NO_TRADE`：M5最终样本外16笔交易净亏损5,915.89美元，M1独立样本外18笔交易净亏损7,016.25美元；两者都未进入前向影子观察，也没有股票Sandbox订单。
 
 ## 测试
 
