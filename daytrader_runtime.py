@@ -25,6 +25,7 @@ from crypto_runtime import (
     _buying_power,
     _instrument_rule,
     _order_status,
+    _open_order_count,
     _position_map,
     _snapshots,
     ensure_sandbox,
@@ -159,9 +160,8 @@ def _submit_order(
     reason: str,
     estimated_loss: bool = False,
 ) -> dict[str, Any]:
-    current_position = (
-        _position_map(api, account_id).get(symbol) if side.upper() == "SELL" else None
-    )
+    current_position = _position_map(api, account_id).get(symbol)
+    current_open_order_count = _open_order_count(api, account_id)
     authorization = authorize_automated_order(
         STRATEGY_ID,
         symbol,
@@ -169,9 +169,10 @@ def _submit_order(
         current_position_quantity=(
             Decimal(str(current_position["quantity"]))
             if current_position
-            else Decimal("0") if side.upper() == "SELL" else None
+            else Decimal("0")
         ),
         order_quantity=quantity,
+        current_open_order_count=current_open_order_count,
     )
     if not authorization["authorized"]:
         log_event(

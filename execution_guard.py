@@ -92,6 +92,7 @@ def authorize_automated_order(
     now: Optional[datetime] = None,
     current_position_quantity: Optional[Decimal] = None,
     order_quantity: Optional[Decimal] = None,
+    current_open_order_count: Optional[int] = None,
 ) -> dict[str, Any]:
     normalized_side = side.upper()
     status = authorization_status(policy_file, now=now)
@@ -104,6 +105,18 @@ def authorize_automated_order(
                 "authorized": False,
                 "mode": "BLOCKED",
                 "blocking_reasons": ["risk_reduction_quantity_unverified"],
+            }
+        if current_open_order_count is None or current_open_order_count < 0:
+            return {
+                "authorized": False,
+                "mode": "BLOCKED",
+                "blocking_reasons": ["open_order_state_unverified"],
+            }
+        if current_open_order_count:
+            return {
+                "authorized": False,
+                "mode": "BLOCKED",
+                "blocking_reasons": ["open_orders_present"],
             }
         if current_position_quantity <= 0:
             return {
@@ -130,6 +143,20 @@ def authorize_automated_order(
             "mode": "BLOCKED",
             "blocking_reasons": ["unsupported_side"],
         }
+    if (
+        current_position_quantity is None
+        or order_quantity is None
+        or current_open_order_count is None
+        or current_open_order_count < 0
+    ):
+        reasons.append("new_risk_state_unverified")
+    else:
+        if current_position_quantity != 0:
+            reasons.append("position_already_exists")
+        if order_quantity <= 0:
+            reasons.append("invalid_new_risk_quantity")
+        if current_open_order_count:
+            reasons.append("open_orders_present")
     if strategy_id not in status["approved_strategy_ids"]:
         reasons.append("strategy_not_approved")
     if symbol not in status["approved_symbols"]:

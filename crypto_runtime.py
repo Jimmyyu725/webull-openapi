@@ -140,6 +140,18 @@ def _position_map(api: WebullAPI, account_id: str) -> dict[str, dict[str, Any]]:
     }
 
 
+def _open_order_count(api: WebullAPI, account_id: str) -> int:
+    data = _api_data(
+        api.trade.order_v3.get_order_open(account_id, page_size=50),
+        "Open order query",
+    )
+    if data is None:
+        return 0
+    if not isinstance(data, list):
+        raise RuntimeError("Open order query returned unexpected data")
+    return len(data)
+
+
 def _buying_power(api: WebullAPI, account_id: str) -> Decimal:
     data = _api_data(api.trade.account_v2.get_account_balance(account_id), "Balance query")
     assets = data.get("account_currency_assets", []) if isinstance(data, dict) else []
@@ -246,9 +258,8 @@ def submit_market_order(
     reason: str,
     estimated_loss: bool = False,
 ) -> dict[str, Any]:
-    current_position = (
-        _position_map(api, account_id).get(symbol) if side.upper() == "SELL" else None
-    )
+    current_position = _position_map(api, account_id).get(symbol)
+    current_open_order_count = _open_order_count(api, account_id)
     authorization = authorize_automated_order(
         STRATEGY_ID,
         symbol,
@@ -256,9 +267,10 @@ def submit_market_order(
         current_position_quantity=(
             Decimal(str(current_position["quantity"]))
             if current_position
-            else Decimal("0") if side.upper() == "SELL" else None
+            else Decimal("0")
         ),
         order_quantity=quantity,
+        current_open_order_count=current_open_order_count,
     )
     if not authorization["authorized"]:
         log_event(
