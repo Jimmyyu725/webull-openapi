@@ -556,6 +556,10 @@ class EquityForwardRecorderTests(unittest.TestCase):
         self.assertEqual(second["recorded"], 0)
         self.assertTrue(all(item["samples"] == 1 for item in current["symbols"].values()))
         self.assertTrue(all(item["p95_quote_age_seconds"] >= 0 for item in current["symbols"].values()))
+        self.assertTrue(all(
+            item["p95_bar_close_lag_seconds"] == 30.0
+            for item in current["symbols"].values()
+        ))
         self.assertFalse(current["orders_enabled"])
         self.assertEqual(api.data.market_data.get_snapshot.call_count, 2)
         self.assertFalse(hasattr(api, "trade"))
@@ -588,6 +592,41 @@ class EquityForwardRecorderTests(unittest.TestCase):
             )
         self.assertEqual(result["outcome"], "no_current_closed_bar")
         api.data.market_data.get_snapshot.assert_not_called()
+
+    def test_forward_quality_rejects_late_or_future_bar_timestamps(self):
+        now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        api = self._api(now)
+        bar_time = now - timedelta(minutes=1, seconds=31)
+        payload = api.data.market_data.get_batch_history_bar.return_value.json()
+        for item in payload["result"]:
+            item["result"][0]["time"] = bar_time.isoformat()
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            record_equity_forward_once(
+                api,
+                now=now,
+                database=database,
+                lock_file=Path(directory) / "forward.lock",
+            )
+            delayed = equity_forward_status(database)
+            self.assertTrue(all(
+                item["p95_bar_close_lag_seconds"] == 31.0
+                and not item["quality_checks"]["p95_bar_close_lag"]
+                for item in delayed["symbols"].values()
+            ))
+
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "UPDATE samples SET request_time = ?",
+                    ((bar_time + timedelta(seconds=30)).isoformat(),),
+                )
+            future = equity_forward_status(database)
+
+        self.assertTrue(all(
+            item["negative_bar_close_lag_count"] == 1
+            and not item["quality_checks"]["bar_close_time_order"]
+            for item in future["symbols"].values()
+        ))
 
     def test_forward_launch_agent_has_no_order_command(self):
         payload = equity_forward_launch_payload()
@@ -646,6 +685,8 @@ class EquityForwardRecorderTests(unittest.TestCase):
                 connection.executemany(EQUITY_FORWARD_INSERT_SAMPLE, rows)
             initial = equity_session_coverage(database)
             self.assertTrue(initial["sessions"][0]["complete"])
+            self.assertEqual(initial["sessions"][0]["bar_timeliness"], "PASS")
+            self.assertEqual(initial["sessions"][0]["p95_bar_close_lag_seconds"], 0.0)
             self.assertEqual(equity_forward_status(database)["complete_session_count"], 1)
 
             with sqlite3.connect(database) as connection:

@@ -35,6 +35,7 @@ TARGET_SESSIONS = 20
 MIN_SAMPLES_PER_SESSION = 371
 TCA_HORIZONS_MINUTES = (1, 5, 30)
 TCA_OPERATIONAL_BUFFER_BPS = 2.0
+MAX_P95_BAR_CLOSE_LAG_SECONDS = 30.0
 
 
 SCHEMA = """
@@ -252,6 +253,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         "symbols": list(SYMBOLS),
         "expected_regular_minutes": 390,
         "protocol_minimum_aligned_minutes": MIN_SAMPLES_PER_SESSION,
+        "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
         "complete_session_count": 0,
         "sessions": [],
         "database": str(database),
@@ -263,7 +265,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
     with closing(sqlite3.connect(database)) as connection:
         rows = connection.execute(
             """
-            SELECT symbol, session_day, bar_time, valid_bar, valid_quote
+            SELECT symbol, session_day, bar_time, request_time, valid_bar, valid_quote
             FROM samples
             WHERE symbol IN (?, ?, ?)
             ORDER BY session_day, bar_time, symbol
@@ -271,17 +273,26 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
             SYMBOLS,
         ).fetchall()
 
-    grouped: dict[str, dict[str, dict[str, set[datetime]]]] = {}
-    for symbol, session_day, bar_time, valid_bar, valid_quote in rows:
+    grouped: dict[str, dict[str, dict[str, Any]]] = {}
+    for symbol, session_day, bar_time, request_time, valid_bar, valid_quote in rows:
         values = grouped.setdefault(
             session_day,
             {
-                item: {"observed": set(), "valid_bar": set(), "valid_quote": set()}
+                item: {
+                    "observed": set(),
+                    "valid_bar": set(),
+                    "valid_quote": set(),
+                    "bar_close_lags": [],
+                }
                 for item in SYMBOLS
             },
         )[symbol]
         timestamp = parse_time(bar_time).astimezone(timezone.utc)
+        request_timestamp = parse_time(request_time).astimezone(timezone.utc)
         values["observed"].add(timestamp)
+        values["bar_close_lags"].append(
+            (request_timestamp - timestamp - timedelta(minutes=1)).total_seconds()
+        )
         if valid_bar:
             values["valid_bar"].add(timestamp)
         if valid_quote:
@@ -297,17 +308,31 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         }
         symbol_output: dict[str, Any] = {}
         aligned = set(expected)
+        session_lags: list[float] = []
         for symbol in SYMBOLS:
             values = grouped[session_day][symbol]
             observed = values["observed"] & expected
             valid_bars = values["valid_bar"] & expected
             valid_quotes = values["valid_quote"] & expected
+            lags = values["bar_close_lags"]
+            session_lags.extend(lags)
+            p95_lag = _percentile(lags, 0.95)
+            negative_lags = sum(value < 0 for value in lags)
             missing = sorted(expected - valid_bars)
             aligned &= valid_bars
             symbol_output[symbol] = {
                 "observed_minutes": len(observed),
                 "valid_bar_minutes": len(valid_bars),
                 "valid_quote_minutes": len(valid_quotes),
+                "bar_timeliness": (
+                    "PASS"
+                    if negative_lags == 0
+                    and p95_lag is not None
+                    and p95_lag <= MAX_P95_BAR_CLOSE_LAG_SECONDS
+                    else "FAIL"
+                ),
+                "p95_bar_close_lag_seconds": p95_lag,
+                "negative_bar_close_lag_count": negative_lags,
                 "first_bar": min(observed).isoformat() if observed else None,
                 "last_bar": max(observed).isoformat() if observed else None,
                 "missing_expected_minutes": len(missing),
@@ -332,6 +357,8 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                 run = run + 1 if previous and value - previous == timedelta(minutes=1) else 1
                 maximum_internal_gap = max(maximum_internal_gap, run)
                 previous = value
+        session_p95_lag = _percentile(session_lags, 0.95)
+        session_negative_lags = sum(value < 0 for value in session_lags)
         sessions.append({
             "session_day": session_day,
             "complete": len(aligned) >= MIN_SAMPLES_PER_SESSION,
@@ -349,6 +376,15 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                 value.astimezone(EASTERN).strftime("%H:%M")
                 for value in internal_missing[:10]
             ],
+            "bar_timeliness": (
+                "PASS"
+                if session_negative_lags == 0
+                and session_p95_lag is not None
+                and session_p95_lag <= MAX_P95_BAR_CLOSE_LAG_SECONDS
+                else "FAIL"
+            ),
+            "p95_bar_close_lag_seconds": session_p95_lag,
+            "negative_bar_close_lag_count": session_negative_lags,
             "symbols": symbol_output,
         })
 
@@ -379,6 +415,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
             "decision": "PENDING",
             "symbols": list(SYMBOLS),
             "target_complete_sessions": TARGET_SESSIONS,
+            "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
             "database": str(database),
             "installed": LAUNCH_PLIST.exists(),
             "launch_label": LAUNCH_LABEL,
@@ -408,14 +445,32 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
                     (symbol,),
                 ) if row[0] is not None
             ]
+            bar_close_lags = [
+                (
+                    parse_time(row[1]).astimezone(timezone.utc)
+                    - parse_time(row[0]).astimezone(timezone.utc)
+                    - timedelta(minutes=1)
+                ).total_seconds()
+                for row in connection.execute(
+                    "SELECT bar_time, request_time FROM samples WHERE symbol = ?",
+                    (symbol,),
+                )
+            ]
             p95_spread = _percentile(spreads, 0.95)
             p95_age = _percentile(ages, 0.95)
+            p95_bar_close_lag = _percentile(bar_close_lags, 0.95)
+            negative_bar_close_lags = sum(value < 0 for value in bar_close_lags)
             checks = {
                 "complete_sessions": len(complete) >= TARGET_SESSIONS,
                 "valid_bar_coverage": (summary[4] or 0.0) == 1.0,
                 "valid_quote_coverage": (summary[5] or 0.0) >= 0.99,
                 "p95_quote_age": p95_age is not None and p95_age <= 5.0,
                 "p95_spread": p95_spread is not None and p95_spread <= 5.0,
+                "bar_close_time_order": negative_bar_close_lags == 0,
+                "p95_bar_close_lag": (
+                    p95_bar_close_lag is not None
+                    and p95_bar_close_lag <= MAX_P95_BAR_CLOSE_LAG_SECONDS
+                ),
             }
             symbols[symbol] = {
                 "samples": summary[0],
@@ -426,6 +481,8 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
                 "valid_quote_coverage": round(summary[5] or 0.0, 6),
                 "p95_spread_bps": p95_spread,
                 "p95_quote_age_seconds": p95_age,
+                "p95_bar_close_lag_seconds": p95_bar_close_lag,
+                "negative_bar_close_lag_count": negative_bar_close_lags,
                 "quality_checks": checks,
                 "quality_passed": all(checks.values()),
             }
@@ -442,6 +499,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
         "complete_sessions": complete,
         "complete_session_count": len(complete),
         "target_complete_sessions": TARGET_SESSIONS,
+        "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
         "database": str(database),
         "installed": LAUNCH_PLIST.exists(),
         "launch_label": LAUNCH_LABEL,
