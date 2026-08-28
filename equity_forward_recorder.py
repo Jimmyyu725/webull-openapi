@@ -102,6 +102,10 @@ def _connect(database: Path = DATABASE, now: Optional[datetime] = None) -> sqlit
     return connection
 
 
+def _read_connection(database: Path = DATABASE) -> sqlite3.Connection:
+    return sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True)
+
+
 def _is_regular_hours(now: datetime) -> bool:
     local = now.astimezone(EASTERN)
     return local.weekday() < 5 and time(9, 30) <= local.time() < time(16, 0)
@@ -257,7 +261,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
     if not database.exists():
         return output
 
-    with closing(sqlite3.connect(database)) as connection:
+    with closing(_read_connection(database)) as connection:
         rows = connection.execute(
             """
             SELECT symbol, session_day, bar_time, request_time, valid_bar, valid_quote,
@@ -504,7 +508,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
     coverage = session_coverage(database)
     complete = coverage["complete_sessions"]
     qualified = coverage["qualified_sessions"]
-    with closing(_connect(database)) as connection:
+    with closing(_read_connection(database)) as connection:
         symbols = {}
         for symbol in SYMBOLS:
             summary = connection.execute(
@@ -636,7 +640,7 @@ def execution_diagnostics(database: Path = DATABASE) -> dict[str, Any]:
     if not database.exists():
         return output
 
-    with closing(_connect(database)) as connection:
+    with closing(_read_connection(database)) as connection:
         for symbol in SYMBOLS:
             rows = connection.execute(
                 """

@@ -48,6 +48,7 @@ Gate通过只说明前向数据可用于后续研究，不说明任何策略有�
 - 独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`，与现有加密任务隔离；按墙钟每个整分钟触发，API执行时间不得累积为下一次触发的调度漂移。
 - `forward-record-status`只读汇总当前样本和质量指标。
 - `forward-coverage-status`逐日列出每标的和三标的共同有效分钟、安装前/尾部缺口、内部采集缺口、最长连续内部缺口及最多10个缺口示例。
+- 所有状态、覆盖率和TCA诊断必须以SQLite `mode=ro`打开数据库；只有采集命令可以取得可写连接，诊断路径的任何写入都必须由数据库层拒绝。
 - `forward-record-install --yes`与`forward-record-uninstall --yes`安装或移除本地每分钟任务。
 - 达到20个合格交易日后自动停止写入；完整但质量失败的交易日不会触发停止。用户可随时卸载。
 

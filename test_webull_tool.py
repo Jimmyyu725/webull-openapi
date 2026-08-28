@@ -57,6 +57,7 @@ from equity_forward_recorder import (
     SCHEMA as EQUITY_FORWARD_SCHEMA,
     SYMBOLS as EQUITY_FORWARD_SYMBOLS,
     _launch_payload as equity_forward_launch_payload,
+    _read_connection as equity_forward_read_connection,
     execution_diagnostics as equity_execution_diagnostics,
     record_once as record_equity_forward_once,
     session_coverage as equity_session_coverage,
@@ -563,6 +564,30 @@ class EquityForwardRecorderTests(unittest.TestCase):
         self.assertFalse(current["orders_enabled"])
         self.assertEqual(api.data.market_data.get_snapshot.call_count, 2)
         self.assertFalse(hasattr(api, "trade"))
+
+    def test_forward_diagnostics_use_database_read_only_mode(self):
+        now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            record_equity_forward_once(
+                self._api(now),
+                now=now,
+                database=database,
+                lock_file=Path(directory) / "forward.lock",
+            )
+            with mock.patch(
+                "equity_forward_recorder._connect",
+                side_effect=AssertionError("diagnostic opened a writable connection"),
+            ):
+                equity_session_coverage(database)
+                equity_forward_status(database)
+                equity_execution_diagnostics(database)
+            connection = equity_forward_read_connection(database)
+            try:
+                with self.assertRaises(sqlite3.OperationalError):
+                    connection.execute("UPDATE samples SET valid_bar = 0")
+            finally:
+                connection.close()
 
     def test_forward_recorder_anchors_time_after_snapshot_response(self):
         cycle_time = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
