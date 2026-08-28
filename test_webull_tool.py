@@ -38,6 +38,12 @@ from equity_orb_strategy import (
     build_sessions as build_stock_sessions,
     webull_stock_bars,
 )
+from intraday_momentum_strategy import (
+    Observation,
+    _execute as execute_intraday_momentum,
+    backtest as backtest_intraday_momentum,
+    observations as intraday_momentum_observations,
+)
 from webull_api import is_mutating_call, redact_secrets
 from webull_cli import replace_account_placeholder
 from webull_orders import (
@@ -574,6 +580,82 @@ class EquityOrbStrategyTests(unittest.TestCase):
             )
         self.assertEqual(len(market.calls), 2)
         self.assertEqual(market.calls[1], 1767312000000)
+
+
+class IntradayMomentumStrategyTests(unittest.TestCase):
+    def _session(
+        self,
+        day: date,
+        *,
+        first_end: Decimal = Decimal("100"),
+        entry: Decimal = Decimal("100"),
+        final: Decimal = Decimal("100"),
+        bars: int = 78,
+    ) -> Session:
+        from equity_orb_strategy import EASTERN
+
+        start = datetime(day.year, day.month, day.day, 9, 30, tzinfo=EASTERN)
+        values = []
+        for index in range(bars):
+            price = Decimal("100")
+            open_price = entry if index == 72 else price
+            close_price = first_end if index == 5 else final if index == 77 else price
+            values.append(Bar(
+                (start + timedelta(minutes=5 * index)).astimezone(timezone.utc),
+                open_price,
+                max(open_price, close_price),
+                min(open_price, close_price),
+                close_price,
+                Decimal("1000"),
+            ))
+        return Session(day, tuple(values))
+
+    def test_signal_uses_previous_close_and_fixed_half_hours(self):
+        previous = self._session(date(2026, 1, 5), final=Decimal("100"))
+        current = self._session(
+            date(2026, 1, 6),
+            first_end=Decimal("102"),
+            entry=Decimal("101"),
+            final=Decimal("103"),
+        )
+        item = intraday_momentum_observations([previous, current])[0]
+        self.assertEqual(item.first_return, Decimal("0.02"))
+        self.assertEqual(item.entry, Decimal("101"))
+        self.assertEqual(item.exit, Decimal("103"))
+
+    def test_early_close_day_does_not_trade(self):
+        previous = self._session(date(2026, 1, 5))
+        early = self._session(date(2026, 1, 6), bars=42)
+        self.assertEqual(intraday_momentum_observations([previous, early]), [])
+
+    def test_long_and_short_pay_both_sides_of_cost(self):
+        long_item = Observation(
+            date(2026, 1, 6), Decimal("0.01"), Decimal("0.01"), Decimal("100"), Decimal("101")
+        )
+        short_item = Observation(
+            date(2026, 1, 7), Decimal("-0.01"), Decimal("-0.01"), Decimal("100"), Decimal("99")
+        )
+        long_trade = execute_intraday_momentum(long_item, Decimal("1000000"), Decimal("0.001"))
+        short_trade = execute_intraday_momentum(short_item, Decimal("1000000"), Decimal("0.001"))
+        self.assertEqual(long_trade.quantity, 1000)
+        self.assertEqual(long_trade.pnl, Decimal("799.000"))
+        self.assertEqual(short_trade.pnl, Decimal("801.000"))
+
+    def test_backtest_reports_predictive_slope_and_costed_expectancy(self):
+        items = [
+            Observation(date(2026, 1, 5 + index), signal, outcome, Decimal("100"), Decimal("100") * (1 + outcome))
+            for index, (signal, outcome) in enumerate((
+                (Decimal("-0.02"), Decimal("-0.01")),
+                (Decimal("-0.01"), Decimal("-0.005")),
+                (Decimal("0.01"), Decimal("0.005")),
+                (Decimal("0.02"), Decimal("0.01")),
+            ))
+        ]
+        result = backtest_intraday_momentum(items, cost=Decimal("0.0001"), include_trades=False)
+        self.assertGreater(result["net_profit"], 0)
+        self.assertGreater(result["average_net_bps"], 0)
+        self.assertGreater(result["regression_slope"], 0)
+        self.assertNotIn("trades", result)
 
 
 class FakeResponse:

@@ -288,11 +288,21 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 
 当前两个独立窗口均为`NO_TRADE`：M5最终样本外16笔交易净亏损5,915.89美元，M1独立样本外18笔交易净亏损7,016.25美元；两者都未进入前向影子观察，也没有股票Sandbox订单。
 
+## 收盘半小时日内动量研究
+
+下一项独立研究复核Gao、Han、Li和Zhou发表于《Journal of Financial Economics》的市场日内动量：以SPY从前一日收盘到10:00的方向作为信号，15:30同向交易、16:00退出；QQQ只作必须同时通过的跨标的复核。固定的一年未见窗口、成本、基准和放行门槛见`reports/intraday-momentum-preregistration.md`。
+
+```bash
+.venv/bin/python webull_cli.py equity-strategy intraday-momentum-backtest
+```
+
+结果为`NO_TRADE`：基准成本下SPY净亏损6,914.48美元，QQQ净亏损9,424.01美元；两者的前半小时与最后半小时回归斜率也均为负。策略没有进入前向影子观察，没有增加任何股票Sandbox订单。
+
 ## 测试
 
 ```bash
 .venv/bin/python -m unittest -v
-.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py
+.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py
 ```
 
 已知环境差异：Webull Sandbox 的 `/trade/calendar` 当前返回 404；当前模拟账户的批量下单开关未开放；交易事件 gRPC 已连接成功，但 Sandbox MQTT 行情流本次在 TCP 和 WebSocket 下均返回 `101 Internal error`。这些能力仍完整保留在 CLI 中，服务端开关或状态恢复后无需改代码。若遇到 `429 TOO_MANY_REQUESTS`，等待接口限流窗口恢复后重试。
