@@ -44,6 +44,11 @@ from intraday_momentum_strategy import (
     backtest as backtest_intraday_momentum,
     observations as intraday_momentum_observations,
 )
+from noise_area_strategy import (
+    DIVIDENDS as NOISE_DIVIDENDS,
+    checkpoints as noise_checkpoints,
+    execute_targets as execute_noise_targets,
+)
 from webull_api import is_mutating_call, redact_secrets
 from webull_cli import replace_account_placeholder
 from webull_orders import (
@@ -656,6 +661,81 @@ class IntradayMomentumStrategyTests(unittest.TestCase):
         self.assertGreater(result["average_net_bps"], 0)
         self.assertGreater(result["regression_slope"], 0)
         self.assertNotIn("trades", result)
+
+
+class NoiseAreaStrategyTests(unittest.TestCase):
+    def _session(
+        self,
+        day: date,
+        *,
+        open_price: Decimal = Decimal("100"),
+        checkpoint_close: Decimal = Decimal("100"),
+        execution_prices: dict[int, Decimal] = None,
+        final_close: Decimal = Decimal("100"),
+    ) -> Session:
+        from equity_orb_strategy import EASTERN
+
+        execution_prices = execution_prices or {}
+        start = datetime(day.year, day.month, day.day, 9, 30, tzinfo=EASTERN)
+        values = []
+        for index in range(78):
+            bar_open = execution_prices.get(index, open_price)
+            close = checkpoint_close if index == 5 else final_close if index == 77 else open_price
+            values.append(Bar(
+                (start + timedelta(minutes=index * 5)).astimezone(timezone.utc),
+                bar_open,
+                max(bar_open, close),
+                min(bar_open, close),
+                close,
+                Decimal("1000"),
+            ))
+        return Session(day, tuple(values))
+
+    def test_noise_checkpoint_uses_prior_14_sessions_and_next_open(self):
+        history = [
+            self._session(date(2024, 1, 2) + timedelta(days=index), checkpoint_close=Decimal("101"))
+            for index in range(14)
+        ]
+        current = self._session(date(2024, 2, 1), checkpoint_close=Decimal("102"))
+        first = noise_checkpoints(history, history[-1], current)[0]
+        self.assertEqual(first.signal_index, 5)
+        self.assertEqual(first.execution_index, 6)
+        self.assertEqual(first.upper, Decimal("101.00"))
+        self.assertEqual(first.target, 1)
+
+    def test_dividend_adjusts_previous_close_anchor(self):
+        history = [
+            self._session(date(2024, 2, 20) + timedelta(days=index), open_price=Decimal("98.405"), checkpoint_close=Decimal("98.405"), final_close=Decimal("100"))
+            for index in range(14)
+        ]
+        current = self._session(
+            date(2024, 3, 15),
+            open_price=Decimal("98.405"),
+            checkpoint_close=Decimal("98.600"),
+        )
+        first = noise_checkpoints(history, history[-1], current)[0]
+        self.assertEqual(NOISE_DIVIDENDS[current.day], Decimal("1.595"))
+        self.assertLess(first.upper, Decimal("99"))
+        self.assertEqual(first.target, 1)
+
+    def test_target_changes_execute_at_next_bar_and_charge_each_order(self):
+        session = self._session(
+            date(2024, 2, 1),
+            execution_prices={6: Decimal("101"), 12: Decimal("99")},
+            final_close=Decimal("98"),
+        )
+        trades = execute_noise_targets(
+            session,
+            [(6, 1), (12, -1)],
+            quantity=100,
+            cost_per_share=Decimal("0.10"),
+        )
+        self.assertEqual([(item.side, item.entry_price, item.exit_price) for item in trades], [
+            ("LONG", Decimal("101"), Decimal("99")),
+            ("SHORT", Decimal("99"), Decimal("98")),
+        ])
+        self.assertEqual([item.pnl for item in trades], [Decimal("-220.00"), Decimal("80.00")])
+        self.assertEqual([item.holding_minutes for item in trades], [30, 330])
 
 
 class FakeResponse:

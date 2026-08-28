@@ -498,6 +498,18 @@ def cmd_intraday_momentum_backtest(api: WebullAPI, _: argparse.Namespace) -> int
     })
 
 
+def cmd_noise_area_backtest(api: WebullAPI, _: argparse.Namespace) -> int:
+    from noise_area_strategy import run_noise_area_backtest, save_report
+
+    report = run_noise_area_backtest(api)
+    json_path, markdown_path = save_report(report)
+    return emit({
+        "decision": report["professional_gate"]["decision"],
+        "json_report": str(json_path),
+        "markdown_report": str(markdown_path),
+    })
+
+
 def cmd_crypto_run_once(api: WebullAPI, args: argparse.Namespace) -> int:
     from crypto_runtime import run_once
 
@@ -726,6 +738,8 @@ def build_parser() -> argparse.ArgumentParser:
     equity_orb_m1.set_defaults(handler=cmd_equity_orb_m1_holdout_backtest)
     equity_momentum = equity_sub.add_parser("intraday-momentum-backtest")
     equity_momentum.set_defaults(handler=cmd_intraday_momentum_backtest)
+    equity_noise = equity_sub.add_parser("noise-area-backtest")
+    equity_noise.set_defaults(handler=cmd_noise_area_backtest)
 
     crypto = sub.add_parser("crypto-strategy", help="Backtest and run the Sandbox crypto trend strategy")
     crypto_sub = crypto.add_subparsers(dest="crypto_command", required=True)
