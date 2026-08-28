@@ -52,6 +52,7 @@ from equity_forward_recorder import (
     LAUNCH_LABEL as EQUITY_FORWARD_LAUNCH_LABEL,
     SYMBOLS as EQUITY_FORWARD_SYMBOLS,
     _launch_payload as equity_forward_launch_payload,
+    execution_diagnostics as equity_execution_diagnostics,
     record_once as record_equity_forward_once,
     status as equity_forward_status,
 )
@@ -587,6 +588,30 @@ class EquityForwardRecorderTests(unittest.TestCase):
         self.assertNotIn(".trade.", source)
         self.assertNotIn("place_order", source)
         self.assertNotIn("cancel_order", source)
+
+    def test_forward_tca_uses_exact_same_session_horizons(self):
+        start = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            lock = Path(directory) / "forward.lock"
+            for offset in (0, 1, 5):
+                now = start + timedelta(minutes=offset)
+                record_equity_forward_once(
+                    self._api(now), now=now, database=database, lock_file=lock
+                )
+            diagnostics = equity_execution_diagnostics(database)
+        spy = diagnostics["symbols"]["SPY"]["horizons"]
+        self.assertEqual(spy["1"]["paired_observations"], 1)
+        self.assertEqual(spy["5"]["paired_observations"], 1)
+        self.assertEqual(spy["30"]["paired_observations"], 0)
+        self.assertGreater(spy["1"]["p95_round_trip_quoted_cost_bps"], 0)
+        self.assertEqual(
+            spy["1"]["minimum_required_gross_edge_bps"],
+            round(spy["1"]["p95_round_trip_quoted_cost_bps"] + 2.0, 6),
+        )
+        self.assertLess(spy["1"]["median_long_executable_return_bps"], 0)
+        self.assertEqual(diagnostics["interpretation"], "EXECUTION_DIAGNOSTIC_ONLY")
+        self.assertFalse(diagnostics["orders_enabled"])
 
 
 class EquityOrbStrategyTests(unittest.TestCase):

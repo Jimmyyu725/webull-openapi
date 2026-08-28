@@ -365,11 +365,14 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 ```bash
 .venv/bin/python webull_cli.py equity-strategy forward-record-once
 .venv/bin/python webull_cli.py equity-strategy forward-record-status
+.venv/bin/python webull_cli.py equity-strategy forward-tca-status
 .venv/bin/python webull_cli.py equity-strategy forward-record-install --yes
 .venv/bin/python webull_cli.py equity-strategy forward-record-uninstall --yes
 ```
 
 本地数据、最小运行副本和独立虚拟环境保存在`~/Library/Application Support/WebullEquityForward/`，不会提交Git。独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`；达到20个完整交易日后停止请求新行情。
+
+`forward-tca-status`只连接同一交易日中恰好相隔1、5和30分钟的有效NBBO，报告半点差、双边报价成本、中间价波动以及成本加2个基点后的最低毛优势门槛。它不生成信号或订单；固定计算见`reports/equity-forward-tca-protocol.md`。数据、研究、影子观察和极小Sandbox订单之间的授权阶梯及组合风险上限见`reports/institutional-sandbox-trading-mandate.md`。
 
 ## 测试
 

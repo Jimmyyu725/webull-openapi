@@ -591,6 +591,12 @@ def cmd_forward_record_status(_: WebullAPI, __: argparse.Namespace) -> int:
     return emit(status())
 
 
+def cmd_forward_tca_status(_: WebullAPI, __: argparse.Namespace) -> int:
+    from equity_forward_recorder import execution_diagnostics
+
+    return emit(execution_diagnostics())
+
+
 def cmd_forward_record_install(_: WebullAPI, args: argparse.Namespace) -> int:
     if not args.yes:
         raise ValueError("Installing the read-only forward recorder requires --yes")
@@ -852,6 +858,8 @@ def build_parser() -> argparse.ArgumentParser:
     equity_forward_once.set_defaults(handler=cmd_forward_record_once)
     equity_forward_status = equity_sub.add_parser("forward-record-status")
     equity_forward_status.set_defaults(handler=cmd_forward_record_status)
+    equity_forward_tca = equity_sub.add_parser("forward-tca-status")
+    equity_forward_tca.set_defaults(handler=cmd_forward_tca_status)
     for name, handler in (
         ("forward-record-install", cmd_forward_record_install),
         ("forward-record-uninstall", cmd_forward_record_uninstall),

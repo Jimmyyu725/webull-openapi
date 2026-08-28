@@ -12,6 +12,7 @@ from contextlib import closing, contextmanager
 from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
+from statistics import median
 from typing import Any, Iterator, Optional
 from zoneinfo import ZoneInfo
 
@@ -32,6 +33,8 @@ LAUNCH_LABEL = "com.jingtianyu.webull-equity-forward"
 LAUNCH_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_LABEL}.plist"
 TARGET_SESSIONS = 20
 MIN_SAMPLES_PER_SESSION = 371
+TCA_HORIZONS_MINUTES = (1, 5, 30)
+TCA_OPERATIONAL_BUFFER_BPS = 2.0
 
 
 SCHEMA = """
@@ -248,6 +251,10 @@ def _percentile(values: list[float], fraction: float) -> Optional[float]:
     return round(ordered[index], 6)
 
 
+def _median(values: list[float]) -> Optional[float]:
+    return round(float(median(values)), 6) if values else None
+
+
 def status(database: Path = DATABASE) -> dict[str, Any]:
     if not database.exists():
         return {
@@ -323,6 +330,98 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
         "launch_label": LAUNCH_LABEL,
         "orders_enabled": False,
     }
+
+
+def execution_diagnostics(database: Path = DATABASE) -> dict[str, Any]:
+    """Estimate top-of-book cost hurdles without creating signals or orders."""
+    recorder = status(database)
+    output: dict[str, Any] = {
+        "status": "ready" if recorder["decision"] == "DATA_USABLE" else "collecting",
+        "decision": recorder["decision"],
+        "interpretation": "EXECUTION_DIAGNOSTIC_ONLY",
+        "complete_session_count": recorder.get("complete_session_count", 0),
+        "target_complete_sessions": TARGET_SESSIONS,
+        "horizons_minutes": list(TCA_HORIZONS_MINUTES),
+        "operational_buffer_bps": TCA_OPERATIONAL_BUFFER_BPS,
+        "symbols": {},
+        "orders_enabled": False,
+        "limitations": [
+            "Top-of-book quotes are a lower-bound cost proxy, not actual fills.",
+            "Overlapping minute observations are not independent strategy trades.",
+            "Results do not measure market impact, fill probability, or price improvement.",
+        ],
+    }
+    if not database.exists():
+        return output
+
+    with closing(_connect(database)) as connection:
+        for symbol in SYMBOLS:
+            rows = connection.execute(
+                """
+                SELECT session_day, bar_time, bid, ask, mid
+                FROM samples
+                WHERE symbol = ? AND valid_bar = 1 AND valid_quote = 1
+                ORDER BY bar_time
+                """,
+                (symbol,),
+            ).fetchall()
+            samples = {
+                (row[0], parse_time(row[1])): {
+                    "bid": Decimal(str(row[2])),
+                    "ask": Decimal(str(row[3])),
+                    "mid": Decimal(str(row[4])),
+                }
+                for row in rows
+                if None not in row[2:5]
+            }
+            horizons: dict[str, Any] = {}
+            for minutes in TCA_HORIZONS_MINUTES:
+                entry_half_spreads: list[float] = []
+                round_trip_costs: list[float] = []
+                absolute_mid_moves: list[float] = []
+                long_returns: list[float] = []
+                short_returns: list[float] = []
+                for (session_day, bar_time), current in samples.items():
+                    future = samples.get((session_day, bar_time + timedelta(minutes=minutes)))
+                    if future is None:
+                        continue
+                    entry_half = (
+                        (current["ask"] - current["mid"]) / current["mid"] * Decimal("10000")
+                    )
+                    exit_half = (
+                        (future["mid"] - future["bid"]) / future["mid"] * Decimal("10000")
+                    )
+                    mid_move = (
+                        (future["mid"] / current["mid"] - Decimal("1")) * Decimal("10000")
+                    )
+                    long_return = (
+                        (future["bid"] - current["ask"]) / current["ask"] * Decimal("10000")
+                    )
+                    short_return = (
+                        (current["bid"] - future["ask"]) / current["bid"] * Decimal("10000")
+                    )
+                    entry_half_spreads.append(float(entry_half))
+                    round_trip_costs.append(float(entry_half + exit_half))
+                    absolute_mid_moves.append(float(abs(mid_move)))
+                    long_returns.append(float(long_return))
+                    short_returns.append(float(short_return))
+                p95_cost = _percentile(round_trip_costs, 0.95)
+                horizons[str(minutes)] = {
+                    "paired_observations": len(round_trip_costs),
+                    "median_entry_half_spread_bps": _median(entry_half_spreads),
+                    "median_round_trip_quoted_cost_bps": _median(round_trip_costs),
+                    "p95_round_trip_quoted_cost_bps": p95_cost,
+                    "median_absolute_mid_move_bps": _median(absolute_mid_moves),
+                    "median_long_executable_return_bps": _median(long_returns),
+                    "median_short_executable_return_bps": _median(short_returns),
+                    "minimum_required_gross_edge_bps": (
+                        round(p95_cost + TCA_OPERATIONAL_BUFFER_BPS, 6)
+                        if p95_cost is not None
+                        else None
+                    ),
+                }
+            output["symbols"][symbol] = {"horizons": horizons}
+    return output
 
 
 def record_once(
