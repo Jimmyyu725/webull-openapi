@@ -37,7 +37,7 @@ from daytrader_strategy import (
     STOP_LOSS,
     TAKE_PROFIT,
     TIMEFRAME,
-    daytrade_signals,
+    decision_snapshot,
     load_report,
 )
 from webull_api import WebullAPI, normalize_result, redact_secrets
@@ -94,16 +94,23 @@ def strategy_lock() -> Iterator[None]:
 def initialize_state(now: Optional[datetime] = None) -> dict[str, Any]:
     existing = read_state()
     if existing:
+        if existing.get("strategy") != "crypto-day-v2":
+            raise RuntimeError("Existing day-trader state predates the professional deployment gate")
         return existing
     report = load_report()
-    symbols = list(report.get("sandbox_symbols", []))
+    symbols = list(report.get("deployment_symbols", []))
     datasets = report.get("sources", {}).get("coinbase_m5_90d", {}).get("symbols", {})
-    if not symbols or any(not datasets.get(symbol, {}).get("quality", {}).get("passed") for symbol in symbols):
-        raise RuntimeError("The 90-day M5 dataset did not pass validation")
+    if not symbols:
+        raise RuntimeError("No symbol passed the professional gate; decision is NO_TRADE")
+    if any(
+        not datasets.get(symbol, {}).get("professional_gate", {}).get("passed")
+        for symbol in symbols
+    ):
+        raise RuntimeError("A deployment symbol does not satisfy the professional gate")
     now = now or utc_now()
     state = {
-        "version": 1,
-        "strategy": "crypto-day-v1",
+        "version": 2,
+        "strategy": "crypto-day-v2",
         "started_at": now.isoformat(),
         "ends_at": (now + timedelta(days=30)).isoformat(),
         "symbols": symbols,
@@ -150,7 +157,7 @@ def _submit_order(
     reason: str,
     estimated_loss: bool = False,
 ) -> dict[str, Any]:
-    order_id = deterministic_order_id(symbol, event_time, side, strategy="crypto-day-v1")
+    order_id = deterministic_order_id(symbol, event_time, side, strategy="crypto-day-v2")
     if order_id in state["submitted_order_ids"] or _already_exists(api, account_id, order_id):
         log_event("duplicate_order_skipped", symbol=symbol, side=side, order_id=order_id)
         return {"order_id": order_id, "duplicate": True}
@@ -371,7 +378,8 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                 candle_id = candle.time.isoformat()
                 if state["last_processed_candle"].get(symbol) == candle_id:
                     continue
-                signal = daytrade_signals(bars)[-1]
+                decision = decision_snapshot(bars)
+                signal = decision["signal"]
                 position = positions.get(symbol)
                 pending = symbol in state["pending_orders"]
                 action = "none"
@@ -427,6 +435,7 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                     action=action,
                     paused=state["paused"],
                     daily_losses=state["daily_losses"],
+                    decision=decision,
                 )
             state["last_bar_check_bucket"] = bucket
         write_state(state)
@@ -459,6 +468,11 @@ def run_forever(api: WebullAPI, *, confirmed: bool) -> dict[str, Any]:
 
 def status() -> dict[str, Any]:
     state = read_state()
+    try:
+        report = load_report()
+        deployment_symbols = list(report.get("deployment_symbols", []))
+    except (FileNotFoundError, KeyError, json.JSONDecodeError):
+        deployment_symbols = []
     arguments = []
     if LAUNCH_PLIST.exists():
         try:
@@ -472,6 +486,8 @@ def status() -> dict[str, Any]:
         runtime_status = "completed" if state["completed"] else ("halted" if state.get("halted") else "running")
     return {
         "status": runtime_status,
+        "decision": "TRADE" if deployment_symbols else "NO_TRADE",
+        "deployment_symbols": deployment_symbols,
         "mode": "HTTP snapshot polling every 5 seconds; M5 close signals",
         "state": state,
         "launch_agent": {
@@ -552,10 +568,10 @@ def _deploy_runtime() -> None:
 
 def install_launch_agent() -> Path:
     ensure_sandbox()
-    _deploy_runtime()
     state = initialize_state()
     if not state["symbols"]:
         raise RuntimeError("No validated symbols; LaunchAgent was not installed")
+    _deploy_runtime()
     try:
         from crypto_runtime import read_state as read_old_state, write_state as write_old_state
 

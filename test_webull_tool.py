@@ -21,7 +21,13 @@ from crypto_strategy import (
     signals,
     webull_bars,
 )
-from daytrader_strategy import backtest_daytrader, daytrade_signals
+from daytrader_strategy import (
+    _buy_and_hold,
+    _professional_gate,
+    allocation_for_risk,
+    backtest_daytrader,
+    daytrade_signals,
+)
 from webull_api import is_mutating_call, redact_secrets
 from webull_cli import replace_account_placeholder
 from webull_orders import (
@@ -396,6 +402,36 @@ class CryptoStrategyTests(unittest.TestCase):
         self.assertEqual(trade["exit_price"], 106.05)
         self.assertEqual(trade["reason"], "target")
 
+    def test_daytrader_sizes_from_total_loss_budget(self):
+        self.assertEqual(allocation_for_risk(), Decimal("0.0025"))
+
+    def test_buy_and_hold_uses_same_allocation_and_both_side_costs(self):
+        bars = [
+            Bar(datetime(2026, 1, 1, tzinfo=timezone.utc), Decimal("100"), Decimal("100"), Decimal("100"), Decimal("100")),
+            Bar(datetime(2026, 1, 2, tzinfo=timezone.utc), Decimal("100"), Decimal("100"), Decimal("100"), Decimal("100")),
+        ]
+        benchmark = _buy_and_hold(bars, Decimal("0.01"))
+        self.assertAlmostEqual(benchmark["net_profit"], -49.5049505)
+
+    def test_professional_gate_requires_positive_oos_excess_return(self):
+        dataset = {
+            "quality": {"passed": True},
+            "costs": {"0.0100": {"net_profit": 10}},
+            "out_of_sample": {
+                "costs": {
+                    "0.0100": {"net_profit": 10, "trade_count": 20, "profit_factor": 1.5, "max_drawdown": 0.0005},
+                    "0.0125": {"net_profit": 1},
+                },
+                "buy_and_hold": {"0.0100": {"net_profit": 5}},
+            },
+            "walk_forward": {"0.0100": [{"net_profit": 1}, {"net_profit": 1}, {"net_profit": -1}]},
+        }
+        self.assertTrue(_professional_gate(dataset)["passed"])
+        dataset["out_of_sample"]["buy_and_hold"]["0.0100"]["net_profit"] = 11
+        gate = _professional_gate(dataset)
+        self.assertFalse(gate["passed"])
+        self.assertFalse(gate["checks"]["oos_beats_buy_and_hold"])
+
 
 class FakeResponse:
     def __init__(self, status_code, data=None):
@@ -618,11 +654,11 @@ class DayTraderRuntimeTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
         report = {
-            "sandbox_symbols": ["BTCUSD", "ETHUSD"],
+            "deployment_symbols": ["BTCUSD", "ETHUSD"],
             "sources": {
                 "coinbase_m5_90d": {
                     "symbols": {
-                        symbol: {"quality": {"passed": True}}
+                        symbol: {"professional_gate": {"passed": True}}
                         for symbol in ("BTCUSD", "ETHUSD")
                     }
                 }
@@ -653,9 +689,9 @@ class DayTraderRuntimeTests(unittest.TestCase):
         from daytrader_runtime import run_once
 
         api = FakeCryptoAPI()
-        signals = ["HOLD"] * 101 + ["BUY"]
+        decision = {"signal": "BUY"}
         with mock.patch("daytrader_runtime.webull_bars", return_value=self._closed_bars()), mock.patch(
-            "daytrader_runtime.daytrade_signals", return_value=signals
+            "daytrader_runtime.decision_snapshot", return_value=decision
         ):
             run_once(api, confirmed=True, now=datetime(2026, 1, 20, tzinfo=timezone.utc))
         self.assertEqual(len(api.place_calls), 1)
@@ -669,9 +705,9 @@ class DayTraderRuntimeTests(unittest.TestCase):
         state["paused"] = True
         write_state(state)
         api = FakeCryptoAPI()
-        signals = ["HOLD"] * 101 + ["BUY"]
+        decision = {"signal": "BUY"}
         with mock.patch("daytrader_runtime.webull_bars", return_value=self._closed_bars()), mock.patch(
-            "daytrader_runtime.daytrade_signals", return_value=signals
+            "daytrader_runtime.decision_snapshot", return_value=decision
         ):
             run_once(api, confirmed=True, now=now)
         self.assertEqual(api.place_calls, [])
@@ -687,15 +723,23 @@ class DayTraderRuntimeTests(unittest.TestCase):
             raise TimeoutError("unknown outcome")
 
         api.trade.order_v3.place_order = uncertain_place
-        signals = ["HOLD"] * 101 + ["BUY"]
+        decision = {"signal": "BUY"}
         with mock.patch("daytrader_runtime.webull_bars", return_value=self._closed_bars()), mock.patch(
-            "daytrader_runtime.daytrade_signals", return_value=signals
+            "daytrader_runtime.decision_snapshot", return_value=decision
         ):
             with self.assertRaisesRegex(RuntimeError, "uncertain"):
                 run_once(api, confirmed=True, now=now)
             result = run_once(api, confirmed=True, now=now + timedelta(seconds=5))
         self.assertEqual(result["status"], "halted")
         self.assertEqual(len(api.place_calls), 1)
+
+    def test_daytrader_refuses_to_start_without_deployment_symbols(self):
+        from daytrader_runtime import initialize_state
+
+        report = {"deployment_symbols": [], "sources": {"coinbase_m5_90d": {"symbols": {}}}}
+        with mock.patch("daytrader_runtime.load_report", return_value=report):
+            with self.assertRaisesRegex(RuntimeError, "NO_TRADE"):
+                initialize_state(datetime(2026, 1, 20, tzinfo=timezone.utc))
 
 
 if __name__ == "__main__":

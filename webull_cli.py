@@ -402,7 +402,8 @@ def cmd_daytrade_backtest(api: WebullAPI, args: argparse.Namespace) -> int:
     report = run_daytrader_backtest(api, days=args.days)
     json_path, markdown_path = save_report(report)
     return emit({
-        "sandbox_symbols": report["sandbox_symbols"],
+        "decision": "TRADE" if report["deployment_symbols"] else "NO_TRADE",
+        "deployment_symbols": report["deployment_symbols"],
         "json_report": str(json_path),
         "markdown_report": str(markdown_path),
     })

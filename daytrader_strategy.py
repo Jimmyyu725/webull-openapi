@@ -25,11 +25,17 @@ INTERVAL_SECONDS = 300
 FAST_EMA = 20
 SLOW_EMA = 100
 BREAKOUT_BARS = 48
-ALLOCATION = Decimal("0.001")
 STOP_LOSS = Decimal("0.02")
 TAKE_PROFIT = Decimal("0.05")
 MAX_HOLD_BARS = 288
-COSTS = (Decimal("0"), Decimal("0.0025"), Decimal("0.01"))
+RISK_PER_TRADE = Decimal("0.0001")
+MAX_ALLOCATION = Decimal("0.005")
+BASE_COST = Decimal("0.01")
+STRESS_COST = Decimal("0.0125")
+COSTS = (Decimal("0"), Decimal("0.0025"), BASE_COST, STRESS_COST)
+MIN_OOS_TRADES = 20
+MIN_PROFIT_FACTOR = 1.2
+MAX_ACCOUNT_DRAWDOWN = Decimal("0.001")
 REPORT_JSON = Path(__file__).parent / "reports" / "daytrader-backtest-90d.json"
 REPORT_MARKDOWN = Path(__file__).parent / "reports" / "daytrader-backtest-90d.md"
 
@@ -61,6 +67,42 @@ def daytrade_signals(bars: list[Bar]) -> list[str]:
         elif bars[index].close < fast[index]:
             output[index] = "SELL"
     return output
+
+
+def allocation_for_risk(
+    *,
+    risk_per_trade: Decimal = RISK_PER_TRADE,
+    stop_loss: Decimal = STOP_LOSS,
+    cost_per_side: Decimal = BASE_COST,
+) -> Decimal:
+    """Size notional from a fixed account-risk budget, including round-trip cost."""
+    if risk_per_trade <= 0 or stop_loss <= 0 or cost_per_side < 0:
+        raise ValueError("Risk, stop loss, and cost must be valid positive values")
+    loss_fraction = stop_loss + cost_per_side * Decimal(2)
+    return min(MAX_ALLOCATION, risk_per_trade / loss_fraction)
+
+
+ALLOCATION = allocation_for_risk()
+
+
+def decision_snapshot(bars: list[Bar]) -> dict[str, Any]:
+    if len(bars) <= SLOW_EMA:
+        raise ValueError("At least 102 closed M5 bars are required")
+    closes = [bar.close for bar in bars]
+    fast = ema(closes, FAST_EMA)[-1]
+    slow = ema(closes, SLOW_EMA)[-1]
+    prior_high = max(bar.high for bar in bars[-BREAKOUT_BARS - 1:-1])
+    close = bars[-1].close
+    break_even = (Decimal("1") + BASE_COST) / (Decimal("1") - BASE_COST) - Decimal("1")
+    return {
+        "signal": daytrade_signals(bars)[-1],
+        "close": _number(close),
+        "ema_fast": _number(fast),
+        "ema_slow": _number(slow),
+        "prior_breakout_high": _number(prior_high),
+        "trend_regime": "up" if fast > slow else "down",
+        "break_even_move": _number(break_even),
+    }
 
 
 def _number(value: Decimal) -> float:
@@ -164,6 +206,10 @@ def backtest_daytrader(
         "profit_factor": round(float(gross_profit / gross_loss), 6) if gross_loss else None,
         "max_drawdown": _number(drawdown),
         "average_holding_hours": round(sum(holding_hours) / len(holding_hours), 2) if trades else 0.0,
+        "average_trade_return": round(
+            sum(float(trade.pnl / (trade.entry_price * trade.quantity)) for trade in trades) / len(trades),
+            8,
+        ) if trades else 0.0,
         "trades": [
             {
                 **asdict(trade),
@@ -179,16 +225,109 @@ def backtest_daytrader(
     }
 
 
-def _dataset(bars: list[Bar], quality: DataQuality) -> dict[str, Any]:
+def _compact_backtest(bars: list[Bar], cost: Decimal) -> dict[str, Any]:
+    metrics = backtest_daytrader(bars, cost_per_side=cost)
+    metrics.pop("trades", None)
+    return metrics
+
+
+def _buy_and_hold(bars: list[Bar], cost: Decimal) -> dict[str, float]:
+    initial_capital = Decimal("1000000")
+    entry_price = bars[0].open * (Decimal("1") + cost)
+    exit_price = bars[-1].close * (Decimal("1") - cost)
+    quantity = quantity_for_notional(initial_capital * ALLOCATION, entry_price)
+    net_profit = quantity * (exit_price - entry_price)
     return {
+        "net_profit": _number(net_profit),
+        "account_return": _number(net_profit / initial_capital),
+        "allocated_return": _number(net_profit / (initial_capital * ALLOCATION)),
+    }
+
+
+def _professional_gate(dataset: dict[str, Any]) -> dict[str, Any]:
+    full = dataset["costs"][f"{float(BASE_COST):.4f}"]
+    oos = dataset["out_of_sample"]["costs"][f"{float(BASE_COST):.4f}"]
+    oos_benchmark = dataset["out_of_sample"]["buy_and_hold"][f"{float(BASE_COST):.4f}"]
+    stress = dataset["out_of_sample"]["costs"][f"{float(STRESS_COST):.4f}"]
+    positive_folds = sum(
+        fold["net_profit"] > 0 for fold in dataset["walk_forward"][f"{float(BASE_COST):.4f}"]
+    )
+    checks = {
+        "data_quality": bool(dataset["quality"]["passed"]),
+        "full_period_net_positive": full["net_profit"] > 0,
+        "oos_net_positive": oos["net_profit"] > 0,
+        "oos_beats_buy_and_hold": oos["net_profit"] > oos_benchmark["net_profit"],
+        "oos_minimum_trades": oos["trade_count"] >= MIN_OOS_TRADES,
+        "oos_profit_factor": (oos["profit_factor"] or 0) >= MIN_PROFIT_FACTOR,
+        "oos_drawdown_within_budget": Decimal(str(oos["max_drawdown"])) <= MAX_ACCOUNT_DRAWDOWN,
+        "stress_cost_positive": stress["net_profit"] > 0,
+        "walk_forward_stability": positive_folds >= 2,
+    }
+    return {
+        "passed": all(checks.values()),
+        "checks": checks,
+        "positive_walk_forward_folds": positive_folds,
+        "required_positive_walk_forward_folds": 2,
+    }
+
+
+def _dataset(
+    bars: list[Bar],
+    quality: DataQuality,
+    *,
+    deployment_gate: bool,
+) -> dict[str, Any]:
+    split = len(bars) * 2 // 3
+    development = bars[:split]
+    out_of_sample = bars[split:]
+    fold_size = len(bars) // 3
+    folds = [
+        bars[index * fold_size:(index + 1) * fold_size if index < 2 else len(bars)]
+        for index in range(3)
+    ]
+    result = {
         "quality": asdict(quality),
         "first_bar": bars[0].time.isoformat(),
         "last_bar": bars[-1].time.isoformat(),
         "costs": {
-            f"{float(cost):.4f}": backtest_daytrader(bars, cost_per_side=cost)
+            f"{float(cost):.4f}": _compact_backtest(bars, cost)
             for cost in COSTS
         },
+        "buy_and_hold": {
+            f"{float(cost):.4f}": _buy_and_hold(bars, cost)
+            for cost in COSTS
+        },
+        "development": {
+            "first_bar": development[0].time.isoformat(),
+            "last_bar": development[-1].time.isoformat(),
+            "costs": {
+                f"{float(cost):.4f}": _compact_backtest(development, cost)
+                for cost in (BASE_COST, STRESS_COST)
+            },
+            "buy_and_hold": {
+                f"{float(cost):.4f}": _buy_and_hold(development, cost)
+                for cost in (BASE_COST, STRESS_COST)
+            },
+        },
+        "out_of_sample": {
+            "first_bar": out_of_sample[0].time.isoformat(),
+            "last_bar": out_of_sample[-1].time.isoformat(),
+            "costs": {
+                f"{float(cost):.4f}": _compact_backtest(out_of_sample, cost)
+                for cost in (BASE_COST, STRESS_COST)
+            },
+            "buy_and_hold": {
+                f"{float(cost):.4f}": _buy_and_hold(out_of_sample, cost)
+                for cost in (BASE_COST, STRESS_COST)
+            },
+        },
+        "walk_forward": {
+            f"{float(cost):.4f}": [_compact_backtest(fold, cost) for fold in folds]
+            for cost in (BASE_COST, STRESS_COST)
+        },
     }
+    result["professional_gate"] = _professional_gate(result) if deployment_gate else None
+    return result
 
 
 def run_daytrader_backtest(
@@ -209,17 +348,31 @@ def run_daytrader_backtest(
             "name": "M5 trend breakout Sandbox day trader",
             "entry": f"EMA{FAST_EMA} above EMA{SLOW_EMA} and close breaks the prior {BREAKOUT_BARS} bars",
             "exit": f"EMA{FAST_EMA} loss, {STOP_LOSS:.0%} stop, {TAKE_PROFIT:.0%} target, or 24-hour limit",
-            "allocation": float(ALLOCATION),
+            "risk_per_trade": float(RISK_PER_TRADE),
+            "max_allocation": float(MAX_ALLOCATION),
+            "risk_sized_allocation": float(ALLOCATION),
             "one_entry_per_symbol_per_utc_day": True,
             "long_only": True,
+            "selection_policy": "Parameters fixed before the final 30-day out-of-sample segment",
+            "parameter_search": False,
+            "tested_strategy_variants": 1,
+        },
+        "professional_gate": {
+            "base_cost_per_side": float(BASE_COST),
+            "stress_cost_per_side": float(STRESS_COST),
+            "minimum_oos_trades": MIN_OOS_TRADES,
+            "minimum_profit_factor": MIN_PROFIT_FACTOR,
+            "maximum_account_drawdown": float(MAX_ACCOUNT_DRAWDOWN),
+            "minimum_positive_walk_forward_folds": 2,
         },
         "sources": {},
-        "sandbox_symbols": list(SYMBOLS),
+        "candidate_symbols": list(SYMBOLS),
+        "deployment_symbols": [],
     }
     coinbase = {}
     for symbol in SYMBOLS:
         bars, quality = coinbase_bars(symbol, start=start, end=end)
-        coinbase[symbol] = _dataset(bars, quality)
+        coinbase[symbol] = _dataset(bars, quality, deployment_gate=True)
     report["sources"]["coinbase_m5_90d"] = {
         "timeframe": TIMEFRAME,
         "symbols": coinbase,
@@ -229,24 +382,33 @@ def run_daytrader_backtest(
         "timeframe": TIMEFRAME,
         "diagnostic_only": True,
         "symbols": {
-            symbol: _dataset(bars, quality)
+            symbol: _dataset(bars, quality, deployment_gate=False)
             for symbol, (bars, quality) in live.items()
         },
     }
+    report["deployment_symbols"] = [
+        symbol
+        for symbol in SYMBOLS
+        if coinbase[symbol]["professional_gate"]["passed"]
+    ]
     return report
 
 
 def markdown_report(report: dict[str, Any]) -> str:
+    allocation = report["strategy"]["risk_sized_allocation"]
     lines = [
-        "# Webull Crypto Sandbox 日内策略回测",
+        "# Webull Crypto Sandbox 专业交易审查",
         "",
         f"生成时间：{report['generated_at']}",
         "",
-        "策略：M5 趋势突破，只做多；每次使用0.1%购买力；每币每天最多入场一次；2%止损、5%止盈、最长持仓24小时。",
-        "信号在K线收盘生成，下一根开盘成交；成本测试为每边0%、0.25%和1%。",
+        f"策略：M5 趋势突破，只做多；按账户风险定仓为{allocation:.2%}；每币每天最多入场一次；2%止损、5%止盈、最长持仓24小时。",
+        "研究纪律：参数先锁定；前60天为开发样本，最后30天完全样本外；另检查三个连续时间段的稳定性。",
+        "成本纪律：Webull基准为每边1%，压力测试为每边1.25%；信号在K线收盘生成，下一根开盘成交。",
         "",
-        "| 数据源 | 标的 | 数据检查 | 成本/边 | 净收益 | 账户收益率 | 分配资金收益率 | 交易数 | 胜率 | 利润因子 | 最大回撤 | 平均持仓小时 |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "## 全样本成本敏感性",
+        "",
+        "| 数据源 | 标的 | 数据检查 | 成本/边 | 净收益 | 账户收益率 | 交易数 | 胜率 | 利润因子 | 最大回撤 | 平均每笔收益 |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for source_name, source in report["sources"].items():
         for symbol, item in source["symbols"].items():
@@ -255,17 +417,43 @@ def markdown_report(report: dict[str, Any]) -> str:
                 lines.append(
                     f"| {source_name} | {symbol} | {'通过' if item['quality']['passed'] else '失败'} | "
                     f"{float(cost):.2%} | ${metrics['net_profit']:,.2f} | {metrics['account_return']:.3%} | "
-                    f"{metrics['allocated_return']:.1%} | {metrics['trade_count']} | {metrics['win_rate']:.1%} | "
+                    f"{metrics['trade_count']} | {metrics['win_rate']:.1%} | "
                     f"{'—' if factor is None else f'{factor:.2f}'} | {metrics['max_drawdown']:.3%} | "
-                    f"{metrics['average_holding_hours']:.2f} |"
+                    f"{metrics['average_trade_return']:.2%} |"
                 )
+    lines.extend([
+        "",
+        "## 样本外放行审查",
+        "",
+        "| 标的 | 策略净收益 | 买入持有 | 超额收益 | 交易数 | 利润因子 | 1.25%压力成本 | 正收益时段 | 放行 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ])
+    coinbase = report["sources"]["coinbase_m5_90d"]["symbols"]
+    for symbol, item in coinbase.items():
+        base = item["out_of_sample"]["costs"][f"{float(BASE_COST):.4f}"]
+        benchmark = item["out_of_sample"]["buy_and_hold"][f"{float(BASE_COST):.4f}"]
+        stress = item["out_of_sample"]["costs"][f"{float(STRESS_COST):.4f}"]
+        gate = item["professional_gate"]
+        factor = base["profit_factor"]
+        lines.append(
+            f"| {symbol} | ${base['net_profit']:,.2f} | ${benchmark['net_profit']:,.2f} | "
+            f"${base['net_profit'] - benchmark['net_profit']:,.2f} | {base['trade_count']} | "
+            f"{'—' if factor is None else f'{factor:.2f}'} | ${stress['net_profit']:,.2f} | "
+            f"{gate['positive_walk_forward_folds']}/3 | {'通过' if gate['passed'] else '拒绝'} |"
+        )
+    deployment = "、".join(report["deployment_symbols"]) or "无"
     lines.extend([
         "",
         "## 结论",
         "",
-        "这是Sandbox学习模式，不是收益承诺。Webull加密货币每边约1%的成本会显著压低日内策略结果；自动运行采用极小仓位和硬性频率限制。",
+        f"可部署标的：{deployment}。",
+        "专业交易不是必须下单：没有通过样本外、成本压力和稳定性审查时，系统必须输出NO_TRADE。",
         "",
     ])
+    for symbol, item in coinbase.items():
+        failed = [name for name, passed in item["professional_gate"]["checks"].items() if not passed]
+        lines.append(f"- {symbol} 未通过：{', '.join(failed) if failed else '无'}")
+    lines.append("")
     return "\n".join(lines)
 
 
