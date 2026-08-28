@@ -41,6 +41,30 @@ MAX_P95_BAR_CLOSE_LAG_SECONDS = 30.0
 MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS = 0.0
 CAPTURE_PROTOCOL_VERSION = "2026-08-29-response-time-v1"
 LEGACY_CAPTURE_PROTOCOL_VERSION = "LEGACY_UNVERSIONED"
+NYSE_CALENDAR_SOURCE = "https://www.nyse.com/trade/hours-calendars"
+NYSE_CALENDAR_VERSION = "NYSE-2026-2028-verified-2026-08-29"
+NYSE_CALENDAR_SUPPORTED_YEARS = frozenset({2026, 2027, 2028})
+NYSE_CLOSED_DAYS = frozenset(
+    date.fromisoformat(value)
+    for value in (
+        "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03",
+        "2026-05-25", "2026-06-19", "2026-07-03", "2026-09-07",
+        "2026-11-26", "2026-12-25",
+        "2027-01-01", "2027-01-18", "2027-02-15", "2027-03-26",
+        "2027-05-31", "2027-06-18", "2027-07-05", "2027-09-06",
+        "2027-11-25", "2027-12-24",
+        "2028-01-17", "2028-02-21", "2028-04-14", "2028-05-29",
+        "2028-06-19", "2028-07-04", "2028-09-04", "2028-11-23",
+        "2028-12-25",
+    )
+)
+NYSE_EARLY_CLOSE_DAYS = frozenset(
+    date.fromisoformat(value)
+    for value in (
+        "2026-11-27", "2026-12-24", "2027-11-26",
+        "2028-07-03", "2028-11-24",
+    )
+)
 
 
 SCHEMA = """
@@ -119,9 +143,20 @@ def _read_connection(database: Path = DATABASE) -> sqlite3.Connection:
     return sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True)
 
 
+def _session_schedule(day: date) -> tuple[str, Optional[time]]:
+    if day.year not in NYSE_CALENDAR_SUPPORTED_YEARS:
+        return "UNSUPPORTED", None
+    if day.weekday() >= 5 or day in NYSE_CLOSED_DAYS:
+        return "CLOSED", None
+    if day in NYSE_EARLY_CLOSE_DAYS:
+        return "EARLY_CLOSE", time(13, 0)
+    return "FULL", time(16, 0)
+
+
 def _is_regular_hours(now: datetime) -> bool:
     local = now.astimezone(EASTERN)
-    return local.weekday() < 5 and time(9, 30) <= local.time() < time(16, 0)
+    _, close = _session_schedule(local.date())
+    return close is not None and time(9, 30) <= local.time() < close
 
 
 def _latest_closed_bars(api: WebullAPI, now: datetime) -> dict[str, dict[str, Any]]:
@@ -260,6 +295,10 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         "status": "not_started",
         "symbols": list(SYMBOLS),
         "expected_regular_minutes": 390,
+        "expected_early_close_minutes": 210,
+        "nyse_calendar_source": NYSE_CALENDAR_SOURCE,
+        "nyse_calendar_version": NYSE_CALENDAR_VERSION,
+        "nyse_calendar_supported_years": sorted(NYSE_CALENDAR_SUPPORTED_YEARS),
         "protocol_minimum_aligned_minutes": MIN_SAMPLES_PER_SESSION,
         "mandatory_anchor_minutes": MANDATORY_ANCHOR_MINUTES,
         "max_consecutive_internal_gap_minutes": MAX_CONSECUTIVE_INTERNAL_GAP_MINUTES,
@@ -272,6 +311,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         "complete_sessions": [],
         "qualified_sessions": [],
         "rejected_complete_sessions": [],
+        "excluded_early_close_sessions": [],
         "sessions": [],
         "database": str(database),
         "orders_enabled": False,
@@ -350,10 +390,22 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
     sessions: list[dict[str, Any]] = []
     for session_day in sorted(grouped):
         day = date.fromisoformat(session_day)
+        session_type, scheduled_close = _session_schedule(day)
+        scheduled_minutes = (
+            scheduled_close.hour * 60 + scheduled_close.minute - (9 * 60 + 30)
+            if scheduled_close
+            else 0
+        )
+        eligible_full_session = session_type == "FULL"
+        minimum_aligned_minutes = (
+            min(MIN_SAMPLES_PER_SESSION, scheduled_minutes)
+            if scheduled_minutes
+            else MIN_SAMPLES_PER_SESSION
+        )
         start = datetime(day.year, day.month, day.day, 9, 30, tzinfo=EASTERN)
         expected = {
             (start + timedelta(minutes=index)).astimezone(timezone.utc)
-            for index in range(390)
+            for index in range(scheduled_minutes)
         }
         symbol_output: dict[str, Any] = {}
         aligned = set(expected)
@@ -478,19 +530,28 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                 previous = value
         session_p95_lag = _percentile(session_lags, 0.95)
         session_negative_lags = sum(value < 0 for value in session_lags)
-        complete = len(aligned) >= MIN_SAMPLES_PER_SESSION
+        aligned_minimum_passed = (
+            bool(expected) and len(aligned) >= minimum_aligned_minutes
+        )
+        complete = eligible_full_session and aligned_minimum_passed
         opening_anchor = {
             start.astimezone(timezone.utc) + timedelta(minutes=index)
-            for index in range(MANDATORY_ANCHOR_MINUTES)
+            for index in range(min(MANDATORY_ANCHOR_MINUTES, scheduled_minutes))
         }
         closing_anchor = {
-            start.astimezone(timezone.utc) + timedelta(minutes=390 - MANDATORY_ANCHOR_MINUTES + index)
-            for index in range(MANDATORY_ANCHOR_MINUTES)
+            start.astimezone(timezone.utc)
+            + timedelta(
+                minutes=scheduled_minutes
+                - min(MANDATORY_ANCHOR_MINUTES, scheduled_minutes)
+                + index
+            )
+            for index in range(min(MANDATORY_ANCHOR_MINUTES, scheduled_minutes))
         }
         opening_anchor_missing = sorted(opening_anchor - aligned)
         closing_anchor_missing = sorted(closing_anchor - aligned)
         session_checks = {
-            "aligned_minimum": complete,
+            "full_session_required": eligible_full_session,
+            "aligned_minimum": aligned_minimum_passed,
             "capture_protocol_consistent": (
                 session_capture_protocol_versions == {CAPTURE_PROTOCOL_VERSION}
             ),
@@ -516,6 +577,13 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
             quality_failures["SESSION"] = session_failures
         sessions.append({
             "session_day": session_day,
+            "session_type": session_type,
+            "eligible_full_session": eligible_full_session,
+            "scheduled_close_et": (
+                scheduled_close.strftime("%H:%M") if scheduled_close else None
+            ),
+            "scheduled_regular_minutes": scheduled_minutes,
+            "minimum_aligned_minutes": minimum_aligned_minutes,
             "complete": complete,
             "qualified": quality_passed,
             "quality_passed": quality_passed,
@@ -557,7 +625,9 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
             "internal_continuity": "PASS" if not internal_missing else "FAIL",
             "aligned_valid_minutes": len(aligned),
             "aligned_missing_minutes": len(aligned_missing),
-            "aligned_coverage": round(len(aligned) / len(expected), 6),
+            "aligned_coverage": (
+                round(len(aligned) / len(expected), 6) if expected else 0.0
+            ),
             "aligned_missing_examples_et": [
                 value.astimezone(EASTERN).strftime("%H:%M")
                 for value in aligned_missing[:10]
@@ -591,6 +661,11 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         "rejected_complete_sessions": [
             item for item in complete_sessions if item not in qualified_sessions
         ],
+        "excluded_early_close_sessions": [
+            item["session_day"]
+            for item in sessions
+            if item["session_type"] == "EARLY_CLOSE"
+        ],
         "sessions": sessions,
     })
     return output
@@ -618,6 +693,10 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
             "qualified_session_count": 0,
             "target_qualified_sessions": TARGET_SESSIONS,
             "target_complete_sessions": TARGET_SESSIONS,
+            "nyse_calendar_source": NYSE_CALENDAR_SOURCE,
+            "nyse_calendar_version": NYSE_CALENDAR_VERSION,
+            "nyse_calendar_supported_years": sorted(NYSE_CALENDAR_SUPPORTED_YEARS),
+            "excluded_early_close_sessions": [],
             "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
             "max_cross_symbol_capture_skew_seconds": MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS,
             "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
@@ -724,8 +803,12 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
         "qualified_sessions": qualified,
         "qualified_session_count": len(qualified),
         "rejected_complete_sessions": coverage["rejected_complete_sessions"],
+        "excluded_early_close_sessions": coverage["excluded_early_close_sessions"],
         "target_qualified_sessions": TARGET_SESSIONS,
         "target_complete_sessions": TARGET_SESSIONS,
+        "nyse_calendar_source": NYSE_CALENDAR_SOURCE,
+        "nyse_calendar_version": NYSE_CALENDAR_VERSION,
+        "nyse_calendar_supported_years": sorted(NYSE_CALENDAR_SUPPORTED_YEARS),
         "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
         "max_cross_symbol_capture_skew_seconds": MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS,
         "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
@@ -850,9 +933,29 @@ def record_once(
         coverage = session_coverage(database)
         if coverage["qualified_session_count"] >= TARGET_SESSIONS:
             return {"outcome": "complete", "recorded": 0, **status(database)}
+        session_type, _ = _session_schedule(now.astimezone(EASTERN).date())
+        if session_type == "UNSUPPORTED":
+            return {
+                "outcome": "calendar_unsupported",
+                "session_type": session_type,
+                "recorded": 0,
+                **status(database),
+            }
+        if session_type == "CLOSED":
+            return {
+                "outcome": "market_closed",
+                "session_type": session_type,
+                "recorded": 0,
+                **status(database),
+            }
+        if not _is_regular_hours(now):
+            return {
+                "outcome": "outside_regular_hours",
+                "session_type": session_type,
+                "recorded": 0,
+                **status(database),
+            }
         with closing(_connect(database, now)) as connection:
-            if not _is_regular_hours(now):
-                return {"outcome": "outside_regular_hours", "recorded": 0, **status(database)}
             bars = _latest_closed_bars(api, now)
             if set(bars) != set(SYMBOLS):
                 return {"outcome": "no_current_closed_bar", "recorded": 0, **status(database)}
@@ -868,7 +971,12 @@ def record_once(
                 )
                 recorded += cursor.rowcount
             connection.commit()
-    return {"outcome": "recorded" if recorded else "duplicate_bar", "recorded": recorded, **status(database)}
+    return {
+        "outcome": "recorded" if recorded else "duplicate_bar",
+        "session_type": session_type,
+        "recorded": recorded,
+        **status(database),
+    }
 
 
 def _launch_payload() -> dict[str, Any]:

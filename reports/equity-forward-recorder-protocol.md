@@ -14,6 +14,8 @@ Webull Sandbox 的股票实时快照与一分钟K线，是否足以支持以后�
 - 记录目标为20个合格普通交易日。某日每个标的至少371个唯一分钟样本，才算完整交易日；完整日还必须逐标的通过全部日级质量Gate才算合格日。半日市不计入20日目标。
 - 数据仅写入`~/Library/Application Support/WebullEquityForward/`，不提交Git。
 
+交易日历实现澄清（2026-08-29）：交易会话以NYSE官方2026至2028年休市及提前收盘表为准，冻结版本为`NYSE-2026-2028-verified-2026-08-29`。休市日不请求行情；13:00 ET提前收盘日只记录09:30至12:59的210个计划分钟，保留独立审计但永不计入20个完整日；超出已冻结年份时返回`calendar_unsupported`并停止采样，不用通用“周一至周五”规则猜测。
+
 完整日实现澄清（2026-08-29）：上述每标的门槛按更严格的共同分钟执行。普通常规时段以09:30至15:59的390个预期分钟为基准；只有三个标的在同一分钟都存在通过质量检查的闭合K线，该分钟才计数。共同有效分钟至少371个才算完整日。三个标的各自达到371条但缺失分钟彼此错位时不放行；这项澄清不降低冻结协议的任何门槛。
 
 合格日实现澄清（2026-08-29）：每个完整日必须让三个标的分别满足有效K线覆盖、有效报价覆盖、报价年龄、点差、K线闭合时间顺序和K线闭合延迟Gate，才计入20日目标。完整但质量失败的交易日保留在审计结果中，不得被其他日期的平均值稀释；记录器继续收集替代交易日。
@@ -37,6 +39,7 @@ Webull Sandbox 的股票实时快照与一分钟K线，是否足以支持以后�
 每个合格日内，三个标的必须分别同时满足：
 
 - 该日为完整普通交易日，三个标的共同有效分钟至少371个；累计目标为20个这样的合格日。
+- 会话必须是NYSE计划的09:30至16:00完整交易日；提前收盘日即使210分钟全部合格也不得进入目标。
 - 当日三个标的的全部记录必须仅使用当前冻结的采集协议版本；未标记或混合版本直接失败。
 - 每个共同有效分钟的三只标的必须使用同一批量响应完成时间；当日最大跨标的采集偏差必须为0秒。
 - 开盘09:30至09:59和收盘15:30至15:59的共同有效分钟必须完整；内部最长连续缺口不得超过1分钟。
@@ -55,6 +58,7 @@ Gate通过只说明前向数据可用于后续研究，不说明任何策略有�
 ## 运行与停止
 
 - `forward-record-once`执行一次只读采样。
+- 休市日返回`market_closed`，超出2026至2028官方日历窗口返回`calendar_unsupported`；两者都不得调用行情API或创建数据库。
 - 独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`，与现有加密任务隔离；按墙钟每个整分钟触发，API执行时间不得累积为下一次触发的调度漂移。
 - `forward-record-status`只读汇总当前样本和质量指标。
 - `forward-coverage-status`逐日列出每标的和三标的共同有效分钟、安装前/尾部缺口、内部采集缺口、最长连续内部缺口及最多10个缺口示例。
@@ -72,4 +76,5 @@ Gate通过只说明前向数据可用于后续研究，不说明任何策略有�
 
 - [Webull Market Data Getting Started](https://developer.webull.com/apis/docs/market-data-api/getting-started/)
 - [Webull Stock Historical Bars](https://developer.webull.com/apis/docs/reference/broker-market-data-api/bars-using-get/)
+- [NYSE Holidays & Trading Hours](https://www.nyse.com/trade/hours-calendars)
 - [Nagel, Evaporating Liquidity](https://academic.oup.com/rfs/article-abstract/25/7/2005/1602153)

@@ -3,7 +3,7 @@ import sqlite3
 import tempfile
 import unittest
 import urllib.parse
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -57,8 +57,10 @@ from equity_forward_recorder import (
     LAUNCH_LABEL as EQUITY_FORWARD_LAUNCH_LABEL,
     SCHEMA as EQUITY_FORWARD_SCHEMA,
     SYMBOLS as EQUITY_FORWARD_SYMBOLS,
+    _is_regular_hours as equity_forward_is_regular_hours,
     _launch_payload as equity_forward_launch_payload,
     _read_connection as equity_forward_read_connection,
+    _session_schedule as equity_forward_session_schedule,
     execution_diagnostics as equity_execution_diagnostics,
     record_once as record_equity_forward_once,
     session_coverage as equity_session_coverage,
@@ -681,7 +683,7 @@ class EquityForwardRecorderTests(unittest.TestCase):
         self.assertEqual(versions, {None, EQUITY_FORWARD_CAPTURE_PROTOCOL_VERSION})
 
     def test_forward_recorder_skips_outside_regular_hours_without_market_call(self):
-        now = datetime(2026, 8, 29, 15, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 8, 28, 22, 0, tzinfo=timezone.utc)
         api = mock.Mock(spec=[])
         with tempfile.TemporaryDirectory() as directory:
             result = record_equity_forward_once(
@@ -692,6 +694,80 @@ class EquityForwardRecorderTests(unittest.TestCase):
             )
         self.assertEqual(result["outcome"], "outside_regular_hours")
         self.assertEqual(result["recorded"], 0)
+
+    def test_nyse_calendar_skips_closed_and_unsupported_days(self):
+        self.assertEqual(
+            equity_forward_session_schedule(date(2026, 9, 7)),
+            ("CLOSED", None),
+        )
+        self.assertEqual(
+            equity_forward_session_schedule(date(2026, 11, 27)),
+            ("EARLY_CLOSE", time(13, 0)),
+        )
+        self.assertEqual(
+            equity_forward_session_schedule(date(2026, 8, 28)),
+            ("FULL", time(16, 0)),
+        )
+        self.assertEqual(
+            equity_forward_session_schedule(date(2029, 1, 2)),
+            ("UNSUPPORTED", None),
+        )
+
+        api = mock.Mock(spec=[])
+        with tempfile.TemporaryDirectory() as directory:
+            holiday_database = Path(directory) / "holiday.sqlite3"
+            unsupported_database = Path(directory) / "unsupported.sqlite3"
+            holiday = record_equity_forward_once(
+                api,
+                now=datetime(2026, 9, 7, 15, 0, tzinfo=timezone.utc),
+                database=holiday_database,
+                lock_file=Path(directory) / "holiday.lock",
+            )
+            unsupported = record_equity_forward_once(
+                api,
+                now=datetime(2029, 1, 2, 15, 0, tzinfo=timezone.utc),
+                database=unsupported_database,
+                lock_file=Path(directory) / "unsupported.lock",
+            )
+
+        self.assertEqual(holiday["outcome"], "market_closed")
+        self.assertEqual(unsupported["outcome"], "calendar_unsupported")
+        self.assertFalse(holiday_database.exists())
+        self.assertFalse(unsupported_database.exists())
+
+    def test_early_close_is_recorded_but_excluded_from_full_session_target(self):
+        now = datetime(2026, 11, 27, 17, 59, 30, tzinfo=timezone.utc)
+        self.assertTrue(equity_forward_is_regular_hours(now))
+        self.assertFalse(
+            equity_forward_is_regular_hours(
+                datetime(2026, 11, 27, 18, 0, tzinfo=timezone.utc)
+            )
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            result = record_equity_forward_once(
+                self._api(now),
+                now=now,
+                database=database,
+                lock_file=Path(directory) / "forward.lock",
+            )
+            coverage = equity_session_coverage(database)
+
+        session = coverage["sessions"][0]
+        self.assertEqual(result["recorded"], 3)
+        self.assertEqual(result["session_type"], "EARLY_CLOSE")
+        self.assertEqual(session["session_type"], "EARLY_CLOSE")
+        self.assertEqual(session["scheduled_close_et"], "13:00")
+        self.assertEqual(session["scheduled_regular_minutes"], 210)
+        self.assertFalse(session["eligible_full_session"])
+        self.assertFalse(session["complete"])
+        self.assertFalse(session["qualified"])
+        self.assertIn("full_session_required", session["session_quality_failures"])
+        self.assertEqual(coverage["excluded_early_close_sessions"], ["2026-11-27"])
+        self.assertEqual(
+            coverage["nyse_calendar_version"],
+            "NYSE-2026-2028-verified-2026-08-29",
+        )
 
     def test_forward_recorder_rejects_stale_regular_hours_bar(self):
         now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
