@@ -2959,6 +2959,8 @@ class FakeCryptoAPI:
         self.open_orders = [] if open_orders is None else open_orders
         self.place_status = place_status
         self.place_calls = []
+        self.snapshot_calls = []
+        self.events = []
         self.trade = SimpleNamespace(
             account_v2=SimpleNamespace(
                 get_account_position=lambda _: self.positions,
@@ -2968,23 +2970,13 @@ class FakeCryptoAPI:
             ),
             order_v3=SimpleNamespace(
                 get_order_open=lambda *_args, **_kwargs: self.open_orders,
-                get_order_detail=lambda *_: {},
+                get_order_detail=self._get_order_detail,
                 place_order=self._place_order,
             ),
         )
         self.data = SimpleNamespace(
             crypto_market_data=SimpleNamespace(
-                get_crypto_snapshot=lambda symbols: [
-                    {
-                        "symbol": symbol,
-                        "price": "100",
-                        "bid": "99",
-                        "ask": "101",
-                        "ask_size": "1000",
-                        "quote_time": int(datetime.now(timezone.utc).timestamp() * 1000),
-                    }
-                    for symbol in symbols
-                ]
+                get_crypto_snapshot=self._get_crypto_snapshot
             ),
             instrument=SimpleNamespace(
                 get_crypto_instrument=lambda symbols: [
@@ -3003,7 +2995,27 @@ class FakeCryptoAPI:
         self.last_account_reference = reference
         return "crypto-account"
 
+    def _get_crypto_snapshot(self, symbols):
+        self.events.append("snapshot")
+        self.snapshot_calls.append(list(symbols))
+        return [
+            {
+                "symbol": symbol,
+                "price": "100",
+                "bid": "99",
+                "ask": "101",
+                "ask_size": "1000",
+                "quote_time": int(datetime.now(timezone.utc).timestamp() * 1000),
+            }
+            for symbol in symbols
+        ]
+
+    def _get_order_detail(self, *_args):
+        self.events.append("order_detail")
+        return {}
+
     def _place_order(self, account_id, orders):
+        self.events.append("place_order")
         self.place_calls.append((account_id, orders))
         return FakeResponse(self.place_status, {"accepted": self.place_status < 400})
 
@@ -3115,7 +3127,6 @@ class CryptoRuntimeTests(unittest.TestCase):
             quantity=Decimal("0.01"),
             candle_time=datetime(2026, 1, 20, tzinfo=timezone.utc),
             reason="test",
-            reference_price=Decimal("100"),
         )
         self.assertTrue(result["blocked"])
         self.assertEqual(api.place_calls, [])
@@ -3186,13 +3197,6 @@ class CryptoRuntimeTests(unittest.TestCase):
             quantity=Decimal("0.01"),
             candle_time=datetime(2026, 1, 20, tzinfo=timezone.utc),
             reason="test",
-            reference_price=Decimal("100"),
-            market_state={
-                "current_best_bid": Decimal("99"),
-                "current_best_ask": Decimal("100"),
-                "current_ask_size": Decimal("1000"),
-                "quote_age_seconds": Decimal("1"),
-            },
         )
 
         self.authorization.assert_called_once_with(
@@ -3203,12 +3207,37 @@ class CryptoRuntimeTests(unittest.TestCase):
             order_quantity=Decimal("0.01"),
             current_open_order_count=0,
             current_buying_power=Decimal("1000000"),
-            order_reference_price=Decimal("100"),
+            order_reference_price=Decimal("101"),
             current_best_bid=Decimal("99"),
-            current_best_ask=Decimal("100"),
+            current_best_ask=Decimal("101"),
             current_ask_size=Decimal("1000"),
-            quote_age_seconds=Decimal("1"),
+            quote_age_seconds=mock.ANY,
         )
+        self.assertEqual(api.snapshot_calls, [["BTCUSD"]])
+        self.assertEqual(api.events, ["order_detail", "snapshot", "place_order"])
+
+    def test_buy_blocks_when_just_in_time_snapshot_is_missing(self):
+        from crypto_runtime import initialize_state, submit_market_order
+
+        self.authorization.side_effect = authorize_automated_order
+        api = FakeCryptoAPI()
+        api.data.crypto_market_data.get_crypto_snapshot = lambda _symbols: []
+        state = initialize_state(datetime(2026, 1, 20, tzinfo=timezone.utc))
+
+        result = submit_market_order(
+            api,
+            "crypto-account",
+            state,
+            symbol="BTCUSD",
+            side="BUY",
+            quantity=Decimal("0.01"),
+            candle_time=datetime(2026, 1, 20, tzinfo=timezone.utc),
+            reason="test",
+        )
+
+        self.assertTrue(result["blocked"])
+        self.assertIn("market_state_unverified", result["authorization"]["blocking_reasons"])
+        self.assertEqual(api.place_calls, [])
 
     def test_unreadable_open_order_state_fails_before_authorization(self):
         from crypto_runtime import initialize_state, submit_market_order
@@ -3585,13 +3614,6 @@ class DayTraderRuntimeTests(unittest.TestCase):
             quantity=Decimal("1"),
             event_time=now,
             reason="test",
-            reference_price=Decimal("100"),
-            market_state={
-                "current_best_bid": Decimal("99"),
-                "current_best_ask": Decimal("100"),
-                "current_ask_size": Decimal("1000"),
-                "quote_age_seconds": Decimal("1"),
-            },
         )
 
         self.authorization.assert_called_once_with(
@@ -3602,12 +3624,14 @@ class DayTraderRuntimeTests(unittest.TestCase):
             order_quantity=Decimal("1"),
             current_open_order_count=0,
             current_buying_power=Decimal("1000000"),
-            order_reference_price=Decimal("100"),
+            order_reference_price=Decimal("101"),
             current_best_bid=Decimal("99"),
-            current_best_ask=Decimal("100"),
+            current_best_ask=Decimal("101"),
             current_ask_size=Decimal("1000"),
-            quote_age_seconds=Decimal("1"),
+            quote_age_seconds=mock.ANY,
         )
+        self.assertEqual(api.snapshot_calls, [["BTCUSD"]])
+        self.assertEqual(api.events, ["order_detail", "snapshot", "place_order"])
 
     def test_daytrader_does_not_sell_unmanaged_position(self):
         from daytrader_runtime import _submit_order, initialize_state

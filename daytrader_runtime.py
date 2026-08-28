@@ -169,20 +169,23 @@ def _submit_order(
     event_time: datetime,
     reason: str,
     estimated_loss: bool = False,
-    reference_price: Optional[Decimal] = None,
-    market_state: Optional[dict[str, Optional[Decimal]]] = None,
 ) -> dict[str, Any]:
+    order_id = deterministic_order_id(symbol, event_time, side, strategy="crypto-day-v2")
+    if order_id in state["submitted_order_ids"] or _already_exists(api, account_id, order_id):
+        log_event("duplicate_order_skipped", symbol=symbol, side=side, order_id=order_id)
+        return {"order_id": order_id, "duplicate": True}
     current_position = _position_map(api, account_id).get(symbol)
     current_open_order_count = _open_order_count(api, account_id)
-    capital = (
-        {
-            "current_buying_power": _buying_power(api, account_id),
-            "order_reference_price": reference_price,
-            **(market_state or {}),
+    capital: dict[str, Any] = {}
+    if side.upper() == "BUY":
+        buying_power = _buying_power(api, account_id)
+        fresh_snapshot = _snapshots(api, [symbol]).get(symbol, {})
+        market_state = _buy_market_state(fresh_snapshot, observed_at=utc_now())
+        capital = {
+            "current_buying_power": buying_power,
+            "order_reference_price": market_state["current_best_ask"],
+            **market_state,
         }
-        if side.upper() == "BUY"
-        else {}
-    )
     ownership = (
         {"managed_position_quantity": _managed_position_quantity(state, symbol)}
         if side.upper() == "SELL"
@@ -210,10 +213,6 @@ def _submit_order(
             reasons=authorization["blocking_reasons"],
         )
         return {"blocked": True, "authorization": authorization}
-    order_id = deterministic_order_id(symbol, event_time, side, strategy="crypto-day-v2")
-    if order_id in state["submitted_order_ids"] or _already_exists(api, account_id, order_id):
-        log_event("duplicate_order_skipped", symbol=symbol, side=side, order_id=order_id)
-        return {"order_id": order_id, "duplicate": True}
     order = build_order(
         symbol=symbol,
         instrument_type="CRYPTO",
@@ -509,8 +508,6 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                         quantity=quantity,
                         event_time=candle.time,
                         reason="m5_breakout",
-                        reference_price=ask,
-                        market_state=market_state,
                     )
                     if submission.get("blocked"):
                         action = "blocked"
