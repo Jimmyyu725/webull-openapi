@@ -866,17 +866,51 @@ class EquityForwardRecorderTests(unittest.TestCase):
                 connection.execute("UPDATE samples SET valid_bar = 1")
                 connection.executemany(
                     "DELETE FROM samples WHERE bar_time = ?",
-                    [(timestamp,) for timestamp in timestamps[200:202]],
+                    [(timestamps[200],)],
+                )
+            isolated_gap = equity_session_coverage(database)["sessions"][0]
+            self.assertTrue(isolated_gap["complete"])
+            self.assertTrue(isolated_gap["qualified"])
+            self.assertEqual(isolated_gap["maximum_internal_gap_minutes"], 1)
+            self.assertEqual(isolated_gap["gap_tolerance"], "PASS")
+
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "DELETE FROM samples WHERE bar_time = ?", (timestamps[201],)
                 )
             internal_gap = equity_session_coverage(database)["sessions"][0]
             self.assertEqual(internal_gap["internal_continuity"], "FAIL")
             self.assertEqual(internal_gap["internal_missing_minutes"], 2)
             self.assertEqual(internal_gap["maximum_internal_gap_minutes"], 2)
+            self.assertTrue(internal_gap["complete"])
+            self.assertFalse(internal_gap["qualified"])
+            self.assertEqual(internal_gap["gap_tolerance"], "FAIL")
+            self.assertEqual(
+                internal_gap["session_quality_failures"],
+                ["maximum_consecutive_internal_gap"],
+            )
 
             with sqlite3.connect(database) as connection:
                 connection.executemany(
                     EQUITY_FORWARD_INSERT_SAMPLE,
                     [row for row in rows if row[1] in timestamps[200:202]],
+                )
+                connection.executemany(
+                    "DELETE FROM samples WHERE bar_time = ?",
+                    [(timestamps[0],), (timestamps[-1],)],
+                )
+            anchor_gap = equity_session_coverage(database)["sessions"][0]
+            self.assertTrue(anchor_gap["complete"])
+            self.assertFalse(anchor_gap["qualified"])
+            self.assertEqual(anchor_gap["opening_anchor"], "FAIL")
+            self.assertEqual(anchor_gap["closing_anchor"], "FAIL")
+            self.assertEqual(anchor_gap["opening_anchor_missing_examples_et"], ["09:30"])
+            self.assertEqual(anchor_gap["closing_anchor_missing_examples_et"], ["15:59"])
+
+            with sqlite3.connect(database) as connection:
+                connection.executemany(
+                    EQUITY_FORWARD_INSERT_SAMPLE,
+                    [row for row in rows if row[1] in (timestamps[0], timestamps[-1])],
                 )
                 for symbol, removed in zip(
                     EQUITY_FORWARD_SYMBOLS,

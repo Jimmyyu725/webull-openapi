@@ -33,6 +33,8 @@ LAUNCH_LABEL = "com.jingtianyu.webull-equity-forward"
 LAUNCH_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_LABEL}.plist"
 TARGET_SESSIONS = 20
 MIN_SAMPLES_PER_SESSION = 371
+MANDATORY_ANCHOR_MINUTES = 30
+MAX_CONSECUTIVE_INTERNAL_GAP_MINUTES = 1
 TCA_HORIZONS_MINUTES = (1, 5, 30)
 TCA_OPERATIONAL_BUFFER_BPS = 2.0
 MAX_P95_BAR_CLOSE_LAG_SECONDS = 30.0
@@ -247,6 +249,8 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         "symbols": list(SYMBOLS),
         "expected_regular_minutes": 390,
         "protocol_minimum_aligned_minutes": MIN_SAMPLES_PER_SESSION,
+        "mandatory_anchor_minutes": MANDATORY_ANCHOR_MINUTES,
+        "max_consecutive_internal_gap_minutes": MAX_CONSECUTIVE_INTERNAL_GAP_MINUTES,
         "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
         "complete_session_count": 0,
         "qualified_session_count": 0,
@@ -422,19 +426,62 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         session_p95_lag = _percentile(session_lags, 0.95)
         session_negative_lags = sum(value < 0 for value in session_lags)
         complete = len(aligned) >= MIN_SAMPLES_PER_SESSION
-        quality_passed = complete and all(
+        opening_anchor = {
+            start.astimezone(timezone.utc) + timedelta(minutes=index)
+            for index in range(MANDATORY_ANCHOR_MINUTES)
+        }
+        closing_anchor = {
+            start.astimezone(timezone.utc) + timedelta(minutes=390 - MANDATORY_ANCHOR_MINUTES + index)
+            for index in range(MANDATORY_ANCHOR_MINUTES)
+        }
+        opening_anchor_missing = sorted(opening_anchor - aligned)
+        closing_anchor_missing = sorted(closing_anchor - aligned)
+        session_checks = {
+            "aligned_minimum": complete,
+            "opening_anchor_complete": not opening_anchor_missing,
+            "closing_anchor_complete": not closing_anchor_missing,
+            "maximum_consecutive_internal_gap": (
+                maximum_internal_gap <= MAX_CONSECUTIVE_INTERNAL_GAP_MINUTES
+            ),
+        }
+        session_failures = [
+            check for check, passed in session_checks.items() if not passed
+        ]
+        quality_passed = all(session_checks.values()) and all(
             item["quality_passed"] for item in symbol_output.values()
         )
+        quality_failures = {
+            symbol: item["quality_failures"]
+            for symbol, item in symbol_output.items()
+            if item["quality_failures"]
+        }
+        if session_failures:
+            quality_failures["SESSION"] = session_failures
         sessions.append({
             "session_day": session_day,
             "complete": complete,
             "qualified": quality_passed,
             "quality_passed": quality_passed,
-            "quality_failures": {
-                symbol: item["quality_failures"]
-                for symbol, item in symbol_output.items()
-                if item["quality_failures"]
-            },
+            "quality_failures": quality_failures,
+            "session_quality_checks": session_checks,
+            "session_quality_failures": session_failures,
+            "opening_anchor": "PASS" if not opening_anchor_missing else "FAIL",
+            "opening_anchor_missing_minutes": len(opening_anchor_missing),
+            "opening_anchor_missing_examples_et": [
+                value.astimezone(EASTERN).strftime("%H:%M")
+                for value in opening_anchor_missing[:10]
+            ],
+            "closing_anchor": "PASS" if not closing_anchor_missing else "FAIL",
+            "closing_anchor_missing_minutes": len(closing_anchor_missing),
+            "closing_anchor_missing_examples_et": [
+                value.astimezone(EASTERN).strftime("%H:%M")
+                for value in closing_anchor_missing[:10]
+            ],
+            "gap_tolerance": (
+                "PASS"
+                if maximum_internal_gap <= MAX_CONSECUTIVE_INTERNAL_GAP_MINUTES
+                else "FAIL"
+            ),
             "internal_continuity": "PASS" if not internal_missing else "FAIL",
             "aligned_valid_minutes": len(aligned),
             "aligned_missing_minutes": len(aligned_missing),
