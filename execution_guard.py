@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Optional
 
@@ -89,6 +90,8 @@ def authorize_automated_order(
     *,
     policy_file: Optional[Path] = None,
     now: Optional[datetime] = None,
+    current_position_quantity: Optional[Decimal] = None,
+    order_quantity: Optional[Decimal] = None,
 ) -> dict[str, Any]:
     normalized_side = side.upper()
     status = authorization_status(policy_file, now=now)
@@ -96,6 +99,30 @@ def authorize_automated_order(
     if API_ENDPOINT != SANDBOX_ENDPOINT:
         return {"authorized": False, "mode": "BLOCKED", "blocking_reasons": reasons}
     if normalized_side == "SELL":
+        if current_position_quantity is None or order_quantity is None:
+            return {
+                "authorized": False,
+                "mode": "BLOCKED",
+                "blocking_reasons": ["risk_reduction_quantity_unverified"],
+            }
+        if current_position_quantity <= 0:
+            return {
+                "authorized": False,
+                "mode": "BLOCKED",
+                "blocking_reasons": ["no_verified_long_position"],
+            }
+        if order_quantity <= 0:
+            return {
+                "authorized": False,
+                "mode": "BLOCKED",
+                "blocking_reasons": ["invalid_risk_reduction_quantity"],
+            }
+        if order_quantity > current_position_quantity:
+            return {
+                "authorized": False,
+                "mode": "BLOCKED",
+                "blocking_reasons": ["sell_exceeds_verified_long_position"],
+            }
         return {"authorized": True, "mode": "RISK_REDUCTION", "blocking_reasons": []}
     if normalized_side != "BUY":
         return {

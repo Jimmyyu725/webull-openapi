@@ -2568,19 +2568,66 @@ class ExecutionAuthorizationTests(unittest.TestCase):
         self.assertFalse(status["new_entries_authorized"])
         self.assertFalse(decision["authorized"])
 
-    def test_missing_policy_fails_closed_for_entry_but_preserves_sandbox_exit(self):
+    def test_missing_policy_fails_closed_for_entry_but_preserves_verified_exit(self):
         with tempfile.TemporaryDirectory() as directory:
             missing = Path(directory) / "missing.json"
             buy = authorize_automated_order(
                 "crypto-day-v2", "BTCUSD", "BUY", policy_file=missing
             )
             sell = authorize_automated_order(
-                "crypto-day-v2", "BTCUSD", "SELL", policy_file=missing
+                "crypto-day-v2",
+                "BTCUSD",
+                "SELL",
+                policy_file=missing,
+                current_position_quantity=Decimal("2"),
+                order_quantity=Decimal("1"),
             )
         self.assertFalse(buy["authorized"])
         self.assertIn("policy_unreadable", buy["blocking_reasons"])
         self.assertTrue(sell["authorized"])
         self.assertEqual(sell["mode"], "RISK_REDUCTION")
+
+    def test_sell_requires_and_cannot_exceed_verified_long_position(self):
+        unverified = authorize_automated_order("any", "BTCUSD", "SELL")
+        flat = authorize_automated_order(
+            "any",
+            "BTCUSD",
+            "SELL",
+            current_position_quantity=Decimal("0"),
+            order_quantity=Decimal("1"),
+        )
+        invalid = authorize_automated_order(
+            "any",
+            "BTCUSD",
+            "SELL",
+            current_position_quantity=Decimal("1"),
+            order_quantity=Decimal("0"),
+        )
+        oversized = authorize_automated_order(
+            "any",
+            "BTCUSD",
+            "SELL",
+            current_position_quantity=Decimal("1"),
+            order_quantity=Decimal("1.0001"),
+        )
+        exact = authorize_automated_order(
+            "any",
+            "BTCUSD",
+            "SELL",
+            current_position_quantity=Decimal("1"),
+            order_quantity=Decimal("1"),
+        )
+
+        self.assertIn(
+            "risk_reduction_quantity_unverified", unverified["blocking_reasons"]
+        )
+        self.assertIn("no_verified_long_position", flat["blocking_reasons"])
+        self.assertIn("invalid_risk_reduction_quantity", invalid["blocking_reasons"])
+        self.assertIn(
+            "sell_exceeds_verified_long_position", oversized["blocking_reasons"]
+        )
+        self.assertTrue(exact["authorized"])
+        self.assertEqual(exact["mode"], "RISK_REDUCTION")
 
     def test_unexpired_policy_limits_strategy_and_symbol(self):
         now = datetime(2026, 1, 20, tzinfo=timezone.utc)
@@ -2604,7 +2651,12 @@ class ExecutionAuthorizationTests(unittest.TestCase):
             policy = self._policy(directory)
             with mock.patch("execution_guard.API_ENDPOINT", "api.webull.com"):
                 decision = authorize_automated_order(
-                    "crypto-day-v2", "BTCUSD", "SELL", policy_file=policy
+                    "crypto-day-v2",
+                    "BTCUSD",
+                    "SELL",
+                    policy_file=policy,
+                    current_position_quantity=Decimal("1"),
+                    order_quantity=Decimal("1"),
                 )
         self.assertFalse(decision["authorized"])
 
@@ -2730,6 +2782,54 @@ class CryptoRuntimeTests(unittest.TestCase):
         self.assertTrue(result["blocked"])
         self.assertEqual(api.place_calls, [])
         self.assertEqual(state["submitted_order_ids"], [])
+
+    def test_sell_authorization_uses_fresh_verified_position(self):
+        from crypto_runtime import initialize_state, submit_market_order
+
+        api = FakeCryptoAPI(positions=[{"symbol": "BTCUSD", "quantity": "0.01"}])
+        state = initialize_state(datetime(2026, 1, 20, tzinfo=timezone.utc))
+        submit_market_order(
+            api,
+            "crypto-account",
+            state,
+            symbol="BTCUSD",
+            side="SELL",
+            quantity=Decimal("0.01"),
+            candle_time=datetime(2026, 1, 20, tzinfo=timezone.utc),
+            reason="test",
+        )
+
+        self.authorization.assert_called_once_with(
+            "crypto-ema-ha-v1",
+            "BTCUSD",
+            "SELL",
+            current_position_quantity=Decimal("0.01"),
+            order_quantity=Decimal("0.01"),
+        )
+
+    def test_sell_with_absent_symbol_is_blocked_as_verified_flat(self):
+        from crypto_runtime import initialize_state, submit_market_order
+
+        self.authorization.side_effect = authorize_automated_order
+        api = FakeCryptoAPI()
+        state = initialize_state(datetime(2026, 1, 20, tzinfo=timezone.utc))
+        result = submit_market_order(
+            api,
+            "crypto-account",
+            state,
+            symbol="BTCUSD",
+            side="SELL",
+            quantity=Decimal("0.01"),
+            candle_time=datetime(2026, 1, 20, tzinfo=timezone.utc),
+            reason="test",
+        )
+
+        self.assertTrue(result["blocked"])
+        self.assertEqual(result["authorization"]["blocking_reasons"], ["no_verified_long_position"])
+        self.assertEqual(api.place_calls, [])
+        self.assertEqual(
+            self.authorization.call_args.kwargs["current_position_quantity"], Decimal("0")
+        )
 
     def test_crypto_status_requires_capital_authorization(self):
         from crypto_runtime import status
@@ -2939,6 +3039,31 @@ class DayTraderRuntimeTests(unittest.TestCase):
         state = read_state()
         self.assertEqual(api.place_calls, [])
         self.assertEqual(state["entries_by_day"][now.date().isoformat()], [])
+
+    def test_daytrader_sell_authorization_uses_fresh_verified_position(self):
+        from daytrader_runtime import _submit_order, initialize_state
+
+        api = FakeCryptoAPI(positions=[{"symbol": "BTCUSD", "quantity": "0.02"}])
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        state = initialize_state(now)
+        _submit_order(
+            api,
+            "crypto-account",
+            state,
+            symbol="BTCUSD",
+            side="SELL",
+            quantity=Decimal("0.01"),
+            event_time=now,
+            reason="test",
+        )
+
+        self.authorization.assert_called_once_with(
+            "crypto-day-v2",
+            "BTCUSD",
+            "SELL",
+            current_position_quantity=Decimal("0.02"),
+            order_quantity=Decimal("0.01"),
+        )
 
     def test_daytrader_status_requires_capital_authorization(self):
         from daytrader_runtime import status

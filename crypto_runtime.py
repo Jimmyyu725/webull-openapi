@@ -246,7 +246,20 @@ def submit_market_order(
     reason: str,
     estimated_loss: bool = False,
 ) -> dict[str, Any]:
-    authorization = authorize_automated_order(STRATEGY_ID, symbol, side)
+    current_position = (
+        _position_map(api, account_id).get(symbol) if side.upper() == "SELL" else None
+    )
+    authorization = authorize_automated_order(
+        STRATEGY_ID,
+        symbol,
+        side,
+        current_position_quantity=(
+            Decimal(str(current_position["quantity"]))
+            if current_position
+            else Decimal("0") if side.upper() == "SELL" else None
+        ),
+        order_quantity=quantity,
+    )
     if not authorization["authorized"]:
         log_event(
             "order_blocked",
