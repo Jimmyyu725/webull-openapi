@@ -48,6 +48,13 @@ from equity_orb_strategy import (
     build_sessions as build_stock_sessions,
     webull_stock_bars,
 )
+from equity_forward_recorder import (
+    LAUNCH_LABEL as EQUITY_FORWARD_LAUNCH_LABEL,
+    SYMBOLS as EQUITY_FORWARD_SYMBOLS,
+    _launch_payload as equity_forward_launch_payload,
+    record_once as record_equity_forward_once,
+    status as equity_forward_status,
+)
 from intraday_momentum_strategy import (
     Observation,
     _execute as execute_intraday_momentum,
@@ -479,6 +486,107 @@ class CryptoStrategyTests(unittest.TestCase):
         gate = _professional_gate(dataset)
         self.assertFalse(gate["passed"])
         self.assertFalse(gate["checks"]["oos_beats_buy_and_hold"])
+
+
+class EquityForwardRecorderTests(unittest.TestCase):
+    def _api(self, now: datetime) -> SimpleNamespace:
+        api = SimpleNamespace(data=SimpleNamespace(market_data=mock.Mock()))
+        bar_time = now - timedelta(minutes=1, seconds=30)
+        bars = []
+        snapshots = []
+        for index, symbol in enumerate(EQUITY_FORWARD_SYMBOLS, start=1):
+            price = Decimal(index * 100)
+            bars.append({
+                "symbol": symbol,
+                "result": [{
+                    "time": bar_time.isoformat(),
+                    "open": str(price),
+                    "high": str(price + 1),
+                    "low": str(price - 1),
+                    "close": str(price + Decimal("0.25")),
+                    "volume": "1000",
+                    "trading_session": "RTH",
+                }],
+            })
+            snapshots.append({
+                "symbol": symbol,
+                "price": str(price + Decimal("0.25")),
+                "bid": str(price),
+                "ask": str(price + Decimal("0.01")),
+                "bid_size": "100",
+                "ask_size": "80",
+                "quote_time": int((now - timedelta(seconds=1)).timestamp() * 1000),
+            })
+        api.data.market_data.get_batch_history_bar.return_value = SimpleNamespace(
+            status_code=200,
+            json=lambda: {"result": bars},
+        )
+        api.data.market_data.get_snapshot.return_value = SimpleNamespace(
+            status_code=200,
+            json=lambda: snapshots,
+        )
+        return api
+
+    def test_forward_recorder_is_idempotent_and_read_only(self):
+        now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        api = self._api(now)
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            lock = Path(directory) / "forward.lock"
+            first = record_equity_forward_once(api, now=now, database=database, lock_file=lock)
+            second = record_equity_forward_once(api, now=now, database=database, lock_file=lock)
+            current = equity_forward_status(database)
+        self.assertEqual(first["recorded"], 3)
+        self.assertEqual(second["outcome"], "duplicate_bar")
+        self.assertEqual(second["recorded"], 0)
+        self.assertTrue(all(item["samples"] == 1 for item in current["symbols"].values()))
+        self.assertTrue(all(item["p95_quote_age_seconds"] >= 0 for item in current["symbols"].values()))
+        self.assertFalse(current["orders_enabled"])
+        self.assertEqual(api.data.market_data.get_snapshot.call_count, 2)
+        self.assertFalse(hasattr(api, "trade"))
+
+    def test_forward_recorder_skips_outside_regular_hours_without_market_call(self):
+        now = datetime(2026, 8, 29, 15, 0, tzinfo=timezone.utc)
+        api = mock.Mock(spec=[])
+        with tempfile.TemporaryDirectory() as directory:
+            result = record_equity_forward_once(
+                api,
+                now=now,
+                database=Path(directory) / "forward.sqlite3",
+                lock_file=Path(directory) / "forward.lock",
+            )
+        self.assertEqual(result["outcome"], "outside_regular_hours")
+        self.assertEqual(result["recorded"], 0)
+
+    def test_forward_recorder_rejects_stale_regular_hours_bar(self):
+        now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        api = self._api(now)
+        payload = api.data.market_data.get_batch_history_bar.return_value.json()
+        for item in payload["result"]:
+            item["result"][0]["time"] = (now - timedelta(minutes=4)).isoformat()
+        with tempfile.TemporaryDirectory() as directory:
+            result = record_equity_forward_once(
+                api,
+                now=now,
+                database=Path(directory) / "forward.sqlite3",
+                lock_file=Path(directory) / "forward.lock",
+            )
+        self.assertEqual(result["outcome"], "no_current_closed_bar")
+        api.data.market_data.get_snapshot.assert_not_called()
+
+    def test_forward_launch_agent_has_no_order_command(self):
+        payload = equity_forward_launch_payload()
+        self.assertEqual(payload["Label"], EQUITY_FORWARD_LAUNCH_LABEL)
+        command = " ".join(payload["ProgramArguments"])
+        self.assertIn("forward-record-once", command)
+        self.assertNotIn("order", command)
+        self.assertEqual(payload["StartInterval"], 60)
+
+    def test_forward_recorder_source_has_no_trade_mutation(self):
+        source = (Path(__file__).parent / "equity_forward_recorder.py").read_text(encoding="utf-8")
+        self.assertNotIn(".trade.", source)
+        self.assertNotIn("place_order", source)
+        self.assertNotIn("cancel_order", source)
 
 
 class EquityOrbStrategyTests(unittest.TestCase):

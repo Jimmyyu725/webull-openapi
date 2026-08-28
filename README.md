@@ -358,11 +358,24 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 
 开发期结论为`REJECT_BEFORE_HOLDOUT`。2000-02-01至2014-12-31的4006个共同交易日通过收盘价质量Gate；基准成本下策略账户收益40.70%，略低于行业等权的40.79%。相对等权的信息比率仅0.01，配对日超额收益t统计量仅0.03，Sharpe为0.41。程序因此没有请求2015年后的保留样本，没有启动影子观察，也没有提交Sandbox订单。可审计结果见`reports/intermediate-sector-momentum-stage-gate.md`和自包含HTML报告。
 
+## 股票前向执行数据记录
+
+已有历史候选全部未达到交易门槛后，系统停止继续挖掘相同历史窗口，改为收集完全前向的执行数据。记录器每分钟读取`SPY`、`QQQ`和`AAPL`的最新闭合M1 K线与一档NBBO，使用SQLite唯一键防止重启或重试产生重复样本；它不生成交易信号，也不引用或调用下单接口。固定20日协议和质量Gate见`reports/equity-forward-recorder-protocol.md`。
+
+```bash
+.venv/bin/python webull_cli.py equity-strategy forward-record-once
+.venv/bin/python webull_cli.py equity-strategy forward-record-status
+.venv/bin/python webull_cli.py equity-strategy forward-record-install --yes
+.venv/bin/python webull_cli.py equity-strategy forward-record-uninstall --yes
+```
+
+本地数据保存在`~/Library/Application Support/WebullEquityForward/`，不会提交Git。独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`；达到20个完整交易日后停止请求新行情。
+
 ## 测试
 
 ```bash
 .venv/bin/python -m unittest -v
-.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py relative_value_strategy.py opening_pressure_strategy.py opening_momentum_strategy.py classic_sector_momentum.py intermediate_sector_momentum.py
+.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py relative_value_strategy.py opening_pressure_strategy.py opening_momentum_strategy.py classic_sector_momentum.py intermediate_sector_momentum.py equity_forward_recorder.py
 ```
 
 已知环境差异：Webull Sandbox 的 `/trade/calendar` 当前返回 404；当前模拟账户的批量下单开关未开放；交易事件 gRPC 已连接成功，但 Sandbox MQTT 行情流本次在 TCP 和 WebSocket 下均返回 `101 Internal error`。这些能力仍完整保留在 CLI 中，服务端开关或状态恢复后无需改代码。若遇到 `429 TOO_MANY_REQUESTS`，等待接口限流窗口恢复后重试。

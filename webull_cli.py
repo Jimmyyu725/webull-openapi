@@ -573,6 +573,41 @@ def cmd_intermediate_sector_momentum(api: WebullAPI, _: argparse.Namespace) -> i
     })
 
 
+def cmd_forward_record_once(api: WebullAPI, _: argparse.Namespace) -> int:
+    from equity_forward_recorder import record_once
+
+    result = record_once(api)
+    return emit({
+        "outcome": result["outcome"],
+        "recorded": result["recorded"],
+        "decision": result["decision"],
+        "complete_session_count": result["complete_session_count"],
+    })
+
+
+def cmd_forward_record_status(_: WebullAPI, __: argparse.Namespace) -> int:
+    from equity_forward_recorder import status
+
+    return emit(status())
+
+
+def cmd_forward_record_install(_: WebullAPI, args: argparse.Namespace) -> int:
+    if not args.yes:
+        raise ValueError("Installing the read-only forward recorder requires --yes")
+    from equity_forward_recorder import install_launch_agent
+
+    return emit({"launch_agent": str(install_launch_agent())})
+
+
+def cmd_forward_record_uninstall(_: WebullAPI, args: argparse.Namespace) -> int:
+    if not args.yes:
+        raise ValueError("Removing the read-only forward recorder requires --yes")
+    from equity_forward_recorder import uninstall_launch_agent
+
+    uninstall_launch_agent()
+    return emit({"removed": True})
+
+
 def cmd_crypto_run_once(api: WebullAPI, args: argparse.Namespace) -> int:
     from crypto_runtime import run_once
 
@@ -813,6 +848,17 @@ def build_parser() -> argparse.ArgumentParser:
     equity_sector.set_defaults(handler=cmd_classic_sector_momentum)
     equity_intermediate = equity_sub.add_parser("intermediate-sector-momentum-backtest")
     equity_intermediate.set_defaults(handler=cmd_intermediate_sector_momentum)
+    equity_forward_once = equity_sub.add_parser("forward-record-once")
+    equity_forward_once.set_defaults(handler=cmd_forward_record_once)
+    equity_forward_status = equity_sub.add_parser("forward-record-status")
+    equity_forward_status.set_defaults(handler=cmd_forward_record_status)
+    for name, handler in (
+        ("forward-record-install", cmd_forward_record_install),
+        ("forward-record-uninstall", cmd_forward_record_uninstall),
+    ):
+        command = equity_sub.add_parser(name)
+        command.add_argument("--yes", action="store_true")
+        command.set_defaults(handler=handler)
 
     crypto = sub.add_parser("crypto-strategy", help="Backtest and run the Sandbox crypto trend strategy")
     crypto_sub = crypto.add_subparsers(dest="crypto_command", required=True)
