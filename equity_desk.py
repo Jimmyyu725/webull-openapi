@@ -253,7 +253,7 @@ def desk_status(
             "reasons": reasons or ["strategy_not_preregistered"],
             "blocked_symbols": unmanaged_symbols,
             "next_gate": (
-                "complete_forward_data"
+                "qualified_forward_data"
                 if recorder["decision"] != "DATA_USABLE"
                 else "preregister_strategy"
             ),
@@ -261,7 +261,13 @@ def desk_status(
         "forward_data": {
             "decision": recorder["decision"],
             "complete_session_count": recorder.get("complete_session_count", 0),
-            "target_complete_sessions": recorder["target_complete_sessions"],
+            "qualified_session_count": recorder.get("qualified_session_count", 0),
+            "rejected_complete_sessions": recorder.get(
+                "rejected_complete_sessions", []
+            ),
+            "target_qualified_sessions": recorder.get(
+                "target_qualified_sessions", recorder["target_complete_sessions"]
+            ),
         },
         "tca_progress": tca_progress,
         "research": research,

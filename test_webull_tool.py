@@ -685,9 +685,39 @@ class EquityForwardRecorderTests(unittest.TestCase):
                 connection.executemany(EQUITY_FORWARD_INSERT_SAMPLE, rows)
             initial = equity_session_coverage(database)
             self.assertTrue(initial["sessions"][0]["complete"])
+            self.assertTrue(initial["sessions"][0]["qualified"])
             self.assertEqual(initial["sessions"][0]["bar_timeliness"], "PASS")
             self.assertEqual(initial["sessions"][0]["p95_bar_close_lag_seconds"], 0.0)
-            self.assertEqual(equity_forward_status(database)["complete_session_count"], 1)
+            initial_status = equity_forward_status(database)
+            self.assertEqual(initial_status["complete_session_count"], 1)
+            self.assertEqual(initial_status["qualified_session_count"], 1)
+
+            with sqlite3.connect(database) as connection:
+                connection.executemany(
+                    "UPDATE samples SET valid_quote = 0 "
+                    "WHERE symbol = 'AAPL' AND bar_time = ?",
+                    [(timestamp,) for timestamp in timestamps[:4]],
+                )
+            quote_rejected = equity_session_coverage(database)
+            quote_rejected_status = equity_forward_status(database)
+            rejected_session = quote_rejected["sessions"][0]
+            self.assertTrue(rejected_session["complete"])
+            self.assertFalse(rejected_session["qualified"])
+            self.assertEqual(quote_rejected["complete_session_count"], 1)
+            self.assertEqual(quote_rejected["qualified_session_count"], 0)
+            self.assertEqual(
+                quote_rejected["rejected_complete_sessions"], [day.isoformat()]
+            )
+            self.assertEqual(
+                rejected_session["quality_failures"],
+                {"AAPL": ["valid_quote_coverage"]},
+            )
+            self.assertEqual(quote_rejected_status["status"], "recording")
+            self.assertEqual(quote_rejected_status["decision"], "PENDING")
+            self.assertEqual(quote_rejected_status["qualified_session_count"], 0)
+
+            with sqlite3.connect(database) as connection:
+                connection.execute("UPDATE samples SET valid_quote = 1")
 
             with sqlite3.connect(database) as connection:
                 connection.executemany(
@@ -698,6 +728,7 @@ class EquityForwardRecorderTests(unittest.TestCase):
             self.assertEqual(invalid["sessions"][0]["aligned_valid_minutes"], 370)
             self.assertFalse(invalid["sessions"][0]["complete"])
             self.assertEqual(equity_forward_status(database)["complete_session_count"], 0)
+            self.assertEqual(equity_forward_status(database)["qualified_session_count"], 0)
 
             with sqlite3.connect(database) as connection:
                 connection.execute("UPDATE samples SET valid_bar = 1")
@@ -733,8 +764,39 @@ class EquityForwardRecorderTests(unittest.TestCase):
         self.assertEqual(session["aligned_valid_minutes"], 333)
         self.assertFalse(session["complete"])
         self.assertEqual(coverage["complete_session_count"], 0)
+        self.assertEqual(coverage["qualified_session_count"], 0)
         self.assertEqual(current["complete_session_count"], 0)
+        self.assertEqual(current["qualified_session_count"], 0)
         self.assertFalse(coverage["orders_enabled"])
+
+    def test_forward_recorder_stops_only_after_qualified_target(self):
+        now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        api = mock.Mock(spec=[])
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            with (
+                mock.patch(
+                    "equity_forward_recorder.session_coverage",
+                    return_value={"qualified_session_count": 20},
+                ),
+                mock.patch(
+                    "equity_forward_recorder.status",
+                    return_value={
+                        "decision": "DATA_USABLE",
+                        "complete_session_count": 21,
+                        "qualified_session_count": 20,
+                    },
+                ),
+            ):
+                result = record_equity_forward_once(
+                    api,
+                    now=now,
+                    database=database,
+                    lock_file=Path(directory) / "forward.lock",
+                )
+        self.assertEqual(result["outcome"], "complete")
+        self.assertEqual(result["recorded"], 0)
+        self.assertEqual(result["qualified_session_count"], 20)
 
     def test_forward_tca_uses_exact_same_session_horizons(self):
         start = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)

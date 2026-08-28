@@ -582,6 +582,7 @@ def cmd_forward_record_once(api: WebullAPI, _: argparse.Namespace) -> int:
         "recorded": result["recorded"],
         "decision": result["decision"],
         "complete_session_count": result["complete_session_count"],
+        "qualified_session_count": result["qualified_session_count"],
     })
 
 

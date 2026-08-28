@@ -224,28 +224,6 @@ INSERT OR IGNORE INTO samples (
 """
 
 
-def _complete_sessions(connection: sqlite3.Connection) -> list[str]:
-    return [
-        row[0]
-        for row in connection.execute(
-            """
-            SELECT session_day
-            FROM (
-                SELECT session_day, bar_time
-                FROM samples
-                WHERE valid_bar = 1 AND symbol IN (?, ?, ?)
-                GROUP BY session_day, bar_time
-                HAVING COUNT(DISTINCT symbol) = ?
-            )
-            GROUP BY session_day
-            HAVING COUNT(*) >= ?
-            ORDER BY session_day
-            """,
-            (*SYMBOLS, len(SYMBOLS), MIN_SAMPLES_PER_SESSION),
-        )
-    ]
-
-
 def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
     """Report aligned valid RTH minutes without backfilling or creating orders."""
     output: dict[str, Any] = {
@@ -255,6 +233,11 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         "protocol_minimum_aligned_minutes": MIN_SAMPLES_PER_SESSION,
         "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
         "complete_session_count": 0,
+        "qualified_session_count": 0,
+        "target_qualified_sessions": TARGET_SESSIONS,
+        "complete_sessions": [],
+        "qualified_sessions": [],
+        "rejected_complete_sessions": [],
         "sessions": [],
         "database": str(database),
         "orders_enabled": False,
@@ -265,7 +248,8 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
     with closing(sqlite3.connect(database)) as connection:
         rows = connection.execute(
             """
-            SELECT symbol, session_day, bar_time, request_time, valid_bar, valid_quote
+            SELECT symbol, session_day, bar_time, request_time, valid_bar, valid_quote,
+                   quote_age_seconds, spread_bps
             FROM samples
             WHERE symbol IN (?, ?, ?)
             ORDER BY session_day, bar_time, symbol
@@ -274,7 +258,16 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         ).fetchall()
 
     grouped: dict[str, dict[str, dict[str, Any]]] = {}
-    for symbol, session_day, bar_time, request_time, valid_bar, valid_quote in rows:
+    for (
+        symbol,
+        session_day,
+        bar_time,
+        request_time,
+        valid_bar,
+        valid_quote,
+        quote_age_seconds,
+        spread_bps,
+    ) in rows:
         values = grouped.setdefault(
             session_day,
             {
@@ -282,7 +275,9 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                     "observed": set(),
                     "valid_bar": set(),
                     "valid_quote": set(),
-                    "bar_close_lags": [],
+                    "bar_close_lags": {},
+                    "quote_ages": {},
+                    "spreads": {},
                 }
                 for item in SYMBOLS
             },
@@ -290,13 +285,17 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         timestamp = parse_time(bar_time).astimezone(timezone.utc)
         request_timestamp = parse_time(request_time).astimezone(timezone.utc)
         values["observed"].add(timestamp)
-        values["bar_close_lags"].append(
-            (request_timestamp - timestamp - timedelta(minutes=1)).total_seconds()
-        )
+        values["bar_close_lags"][timestamp] = (
+            request_timestamp - timestamp - timedelta(minutes=1)
+        ).total_seconds()
         if valid_bar:
             values["valid_bar"].add(timestamp)
         if valid_quote:
             values["valid_quote"].add(timestamp)
+            if quote_age_seconds is not None:
+                values["quote_ages"][timestamp] = float(quote_age_seconds)
+            if spread_bps is not None:
+                values["spreads"][timestamp] = float(spread_bps)
 
     sessions: list[dict[str, Any]] = []
     for session_day in sorted(grouped):
@@ -314,16 +313,48 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
             observed = values["observed"] & expected
             valid_bars = values["valid_bar"] & expected
             valid_quotes = values["valid_quote"] & expected
-            lags = values["bar_close_lags"]
+            valid_quote_bars = valid_quotes & valid_bars
+            lags = [values["bar_close_lags"][value] for value in valid_bars]
+            quote_ages = [
+                values["quote_ages"][value]
+                for value in valid_quote_bars
+                if value in values["quote_ages"]
+            ]
+            spreads = [
+                values["spreads"][value]
+                for value in valid_quote_bars
+                if value in values["spreads"]
+            ]
             session_lags.extend(lags)
             p95_lag = _percentile(lags, 0.95)
             negative_lags = sum(value < 0 for value in lags)
+            valid_bar_coverage = len(valid_bars) / len(observed) if observed else 0.0
+            valid_quote_coverage = (
+                len(valid_quote_bars) / len(valid_bars) if valid_bars else 0.0
+            )
+            p95_quote_age = _percentile(quote_ages, 0.95)
+            p95_spread = _percentile(spreads, 0.95)
+            checks = {
+                "valid_bar_coverage": valid_bar_coverage == 1.0,
+                "valid_quote_coverage": valid_quote_coverage >= 0.99,
+                "p95_quote_age": p95_quote_age is not None and p95_quote_age <= 5.0,
+                "p95_spread": p95_spread is not None and p95_spread <= 5.0,
+                "bar_close_time_order": negative_lags == 0,
+                "p95_bar_close_lag": (
+                    p95_lag is not None
+                    and p95_lag <= MAX_P95_BAR_CLOSE_LAG_SECONDS
+                ),
+            }
             missing = sorted(expected - valid_bars)
             aligned &= valid_bars
             symbol_output[symbol] = {
                 "observed_minutes": len(observed),
                 "valid_bar_minutes": len(valid_bars),
-                "valid_quote_minutes": len(valid_quotes),
+                "valid_quote_minutes": len(valid_quote_bars),
+                "valid_bar_coverage": round(valid_bar_coverage, 6),
+                "valid_quote_coverage": round(valid_quote_coverage, 6),
+                "p95_quote_age_seconds": p95_quote_age,
+                "p95_spread_bps": p95_spread,
                 "bar_timeliness": (
                     "PASS"
                     if negative_lags == 0
@@ -333,6 +364,11 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                 ),
                 "p95_bar_close_lag_seconds": p95_lag,
                 "negative_bar_close_lag_count": negative_lags,
+                "quality_checks": checks,
+                "quality_failures": [
+                    check for check, passed in checks.items() if not passed
+                ],
+                "quality_passed": all(checks.values()),
                 "first_bar": min(observed).isoformat() if observed else None,
                 "last_bar": max(observed).isoformat() if observed else None,
                 "missing_expected_minutes": len(missing),
@@ -359,9 +395,20 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                 previous = value
         session_p95_lag = _percentile(session_lags, 0.95)
         session_negative_lags = sum(value < 0 for value in session_lags)
+        complete = len(aligned) >= MIN_SAMPLES_PER_SESSION
+        quality_passed = complete and all(
+            item["quality_passed"] for item in symbol_output.values()
+        )
         sessions.append({
             "session_day": session_day,
-            "complete": len(aligned) >= MIN_SAMPLES_PER_SESSION,
+            "complete": complete,
+            "qualified": quality_passed,
+            "quality_passed": quality_passed,
+            "quality_failures": {
+                symbol: item["quality_failures"]
+                for symbol, item in symbol_output.items()
+                if item["quality_failures"]
+            },
             "internal_continuity": "PASS" if not internal_missing else "FAIL",
             "aligned_valid_minutes": len(aligned),
             "aligned_missing_minutes": len(aligned_missing),
@@ -388,9 +435,17 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
             "symbols": symbol_output,
         })
 
+    complete_sessions = [item["session_day"] for item in sessions if item["complete"]]
+    qualified_sessions = [item["session_day"] for item in sessions if item["qualified"]]
     output.update({
         "status": "recording" if sessions else "not_started",
-        "complete_session_count": sum(item["complete"] for item in sessions),
+        "complete_session_count": len(complete_sessions),
+        "qualified_session_count": len(qualified_sessions),
+        "complete_sessions": complete_sessions,
+        "qualified_sessions": qualified_sessions,
+        "rejected_complete_sessions": [
+            item for item in complete_sessions if item not in qualified_sessions
+        ],
         "sessions": sessions,
     })
     return output
@@ -414,6 +469,9 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
             "status": "not_started",
             "decision": "PENDING",
             "symbols": list(SYMBOLS),
+            "complete_session_count": 0,
+            "qualified_session_count": 0,
+            "target_qualified_sessions": TARGET_SESSIONS,
             "target_complete_sessions": TARGET_SESSIONS,
             "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
             "database": str(database),
@@ -421,8 +479,10 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
             "launch_label": LAUNCH_LABEL,
             "orders_enabled": False,
         }
+    coverage = session_coverage(database)
+    complete = coverage["complete_sessions"]
+    qualified = coverage["qualified_sessions"]
     with closing(_connect(database)) as connection:
-        complete = _complete_sessions(connection)
         symbols = {}
         for symbol in SYMBOLS:
             summary = connection.execute(
@@ -461,7 +521,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
             p95_bar_close_lag = _percentile(bar_close_lags, 0.95)
             negative_bar_close_lags = sum(value < 0 for value in bar_close_lags)
             checks = {
-                "complete_sessions": len(complete) >= TARGET_SESSIONS,
+                "qualified_sessions": len(qualified) >= TARGET_SESSIONS,
                 "valid_bar_coverage": (summary[4] or 0.0) == 1.0,
                 "valid_quote_coverage": (summary[5] or 0.0) >= 0.99,
                 "p95_quote_age": p95_age is not None and p95_age <= 5.0,
@@ -489,15 +549,19 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
         started = connection.execute(
             "SELECT value FROM metadata WHERE key = 'started_at'"
         ).fetchone()
-    complete_run = len(complete) >= TARGET_SESSIONS
-    all_quality_passed = complete_run and all(item["quality_passed"] for item in symbols.values())
+    complete_run = len(qualified) >= TARGET_SESSIONS
+    all_quality_passed = complete_run
     return {
         "status": "completed" if complete_run else "recording",
-        "decision": "DATA_USABLE" if all_quality_passed else ("DATA_REJECTED" if complete_run else "PENDING"),
+        "decision": "DATA_USABLE" if all_quality_passed else "PENDING",
         "started_at": started[0] if started else None,
         "symbols": symbols,
         "complete_sessions": complete,
         "complete_session_count": len(complete),
+        "qualified_sessions": qualified,
+        "qualified_session_count": len(qualified),
+        "rejected_complete_sessions": coverage["rejected_complete_sessions"],
+        "target_qualified_sessions": TARGET_SESSIONS,
         "target_complete_sessions": TARGET_SESSIONS,
         "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
         "database": str(database),
@@ -515,6 +579,8 @@ def execution_diagnostics(database: Path = DATABASE) -> dict[str, Any]:
         "decision": recorder["decision"],
         "interpretation": "EXECUTION_DIAGNOSTIC_ONLY",
         "complete_session_count": recorder.get("complete_session_count", 0),
+        "qualified_session_count": recorder.get("qualified_session_count", 0),
+        "target_qualified_sessions": TARGET_SESSIONS,
         "target_complete_sessions": TARGET_SESSIONS,
         "horizons_minutes": list(TCA_HORIZONS_MINUTES),
         "operational_buffer_bps": TCA_OPERATIONAL_BUFFER_BPS,
@@ -608,23 +674,26 @@ def record_once(
 ) -> dict[str, Any]:
     _ensure_sandbox()
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    with _lock(lock_file), closing(_connect(database, now)) as connection:
-        complete = _complete_sessions(connection)
-        if len(complete) >= TARGET_SESSIONS:
+    with _lock(lock_file):
+        coverage = session_coverage(database)
+        if coverage["qualified_session_count"] >= TARGET_SESSIONS:
             return {"outcome": "complete", "recorded": 0, **status(database)}
-        if not _is_regular_hours(now):
-            return {"outcome": "outside_regular_hours", "recorded": 0, **status(database)}
-        bars = _latest_closed_bars(api, now)
-        if set(bars) != set(SYMBOLS):
-            return {"outcome": "no_current_closed_bar", "recorded": 0, **status(database)}
-        quotes = _snapshot_rows(api)
-        if set(quotes) != set(SYMBOLS):
-            raise RuntimeError("Webull snapshot response omitted a forward-recording symbol")
-        recorded = 0
-        for symbol in SYMBOLS:
-            cursor = connection.execute(INSERT_SAMPLE, _record(symbol, bars[symbol], quotes[symbol], now))
-            recorded += cursor.rowcount
-        connection.commit()
+        with closing(_connect(database, now)) as connection:
+            if not _is_regular_hours(now):
+                return {"outcome": "outside_regular_hours", "recorded": 0, **status(database)}
+            bars = _latest_closed_bars(api, now)
+            if set(bars) != set(SYMBOLS):
+                return {"outcome": "no_current_closed_bar", "recorded": 0, **status(database)}
+            quotes = _snapshot_rows(api)
+            if set(quotes) != set(SYMBOLS):
+                raise RuntimeError("Webull snapshot response omitted a forward-recording symbol")
+            recorded = 0
+            for symbol in SYMBOLS:
+                cursor = connection.execute(
+                    INSERT_SAMPLE, _record(symbol, bars[symbol], quotes[symbol], now)
+                )
+                recorded += cursor.rowcount
+            connection.commit()
     return {"outcome": "recorded" if recorded else "duplicate_bar", "recorded": recorded, **status(database)}
 
 
