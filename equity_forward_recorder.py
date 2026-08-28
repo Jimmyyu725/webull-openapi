@@ -4,6 +4,7 @@ import fcntl
 import json
 import os
 import plistlib
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -23,6 +24,8 @@ ROOT = Path(__file__).parent
 SYMBOLS = ("SPY", "QQQ", "AAPL")
 EASTERN = ZoneInfo("America/New_York")
 APP_DIR = Path.home() / "Library" / "Application Support" / "WebullEquityForward"
+DEPLOY_DIR = APP_DIR / "app"
+DEPLOY_VENV = APP_DIR / "venv"
 DATABASE = APP_DIR / "equity-forward.sqlite3"
 LOCK_FILE = APP_DIR / "equity-forward.lock"
 LAUNCH_LABEL = "com.jingtianyu.webull-equity-forward"
@@ -355,12 +358,12 @@ def _launch_payload() -> dict[str, Any]:
     return {
         "Label": LAUNCH_LABEL,
         "ProgramArguments": [
-            sys.executable,
-            str(ROOT / "webull_cli.py"),
+            str(DEPLOY_VENV / "bin" / "python"),
+            str(DEPLOY_DIR / "webull_cli.py"),
             "equity-strategy",
             "forward-record-once",
         ],
-        "WorkingDirectory": str(ROOT),
+        "WorkingDirectory": str(DEPLOY_DIR),
         "RunAtLoad": True,
         "StartInterval": 60,
         "ProcessType": "Background",
@@ -369,9 +372,32 @@ def _launch_payload() -> dict[str, Any]:
     }
 
 
+def _deploy_runtime() -> None:
+    DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "config.py",
+        "crypto_strategy.py",
+        "equity_forward_recorder.py",
+        "webull_api.py",
+        "webull_cli.py",
+        "webull_orders.py",
+        "webull_streams.py",
+        "requirements.txt",
+    ):
+        shutil.copy2(ROOT / name, DEPLOY_DIR / name)
+    python = DEPLOY_VENV / "bin" / "python"
+    if not python.exists():
+        subprocess.run([sys.executable, "-m", "venv", str(DEPLOY_VENV)], check=True)
+        subprocess.run(
+            [str(python), "-m", "pip", "install", "-q", "-r", str(DEPLOY_DIR / "requirements.txt")],
+            check=True,
+        )
+
+
 def install_launch_agent() -> Path:
     _ensure_sandbox()
     APP_DIR.mkdir(parents=True, exist_ok=True)
+    _deploy_runtime()
     LAUNCH_PLIST.parent.mkdir(parents=True, exist_ok=True)
     domain = f"gui/{os.getuid()}"
     subprocess.run(["launchctl", "bootout", domain, str(LAUNCH_PLIST)], capture_output=True)

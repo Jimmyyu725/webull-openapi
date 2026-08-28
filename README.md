@@ -369,7 +369,7 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 .venv/bin/python webull_cli.py equity-strategy forward-record-uninstall --yes
 ```
 
-本地数据保存在`~/Library/Application Support/WebullEquityForward/`，不会提交Git。独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`；达到20个完整交易日后停止请求新行情。
+本地数据、最小运行副本和独立虚拟环境保存在`~/Library/Application Support/WebullEquityForward/`，不会提交Git。独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`；达到20个完整交易日后停止请求新行情。
 
 ## 测试
 
