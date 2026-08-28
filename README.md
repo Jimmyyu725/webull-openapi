@@ -318,11 +318,21 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 
 一年M5结果为`NO_TRADE`。65笔完整配对在零成本下只赚127.78美元，平均毛优势仅0.20个基点；按每股每单1.5美分计入四次订单后净亏313.47美元，利润因子0.37，四个连续时段全部亏损。策略虽然Beta接近0，但成本后的Alpha为负，因此没有进入M1复核、影子观察或Sandbox下单。
 
+## 行业ETF开盘价格压力反转研究
+
+这项研究检验固定11只S&P 500行业ETF在第一根五分钟K线产生的市场调整价格压力是否会在日内反转：09:35确定相对赢家和输家，价差至少0.50%时在下一根K线开盘做空赢家、做多输家，每条腿使用5%账户净值。完整规则、未见窗口、成本和放行条件在读取价格前冻结于`reports/opening-pressure-reversal-preregistration.md`。
+
+```bash
+.venv/bin/python webull_cli.py equity-strategy opening-pressure-reversal-backtest
+```
+
+一年M5结果为`NO_TRADE`。236笔完整配对在零成本下净亏11,390.10美元；按每股每单1.5美分计入四次订单后净亏20,925.01美元，利润因子0.70、日Sharpe为-2.35，四个连续时段只有一个盈利。空头腿贡献-17,209.87美元，说明样本中的开盘赢家整体没有按假设充分反转。Webull数据还在2022-06-02缺少一根XLK五分钟K线，因此数据质量门槛也失败；研究不会进入M1复核、影子观察或Sandbox下单。
+
 ## 测试
 
 ```bash
 .venv/bin/python -m unittest -v
-.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py relative_value_strategy.py
+.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py relative_value_strategy.py opening_pressure_strategy.py
 ```
 
 已知环境差异：Webull Sandbox 的 `/trade/calendar` 当前返回 404；当前模拟账户的批量下单开关未开放；交易事件 gRPC 已连接成功，但 Sandbox MQTT 行情流本次在 TCP 和 WebSocket 下均返回 `101 Internal error`。这些能力仍完整保留在 CLI 中，服务端开关或状态恢复后无需改代码。若遇到 `429 TOO_MANY_REQUESTS`，等待接口限流窗口恢复后重试。

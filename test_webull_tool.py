@@ -49,6 +49,12 @@ from noise_area_strategy import (
     checkpoints as noise_checkpoints,
     execute_targets as execute_noise_targets,
 )
+from opening_pressure_strategy import (
+    DATA_SYMBOLS as PRESSURE_SYMBOLS,
+    OpeningSignal,
+    opening_signal,
+    trade_day as trade_pressure_day,
+)
 from relative_value_strategy import (
     checkpoint_z_scores as pair_checkpoint_z_scores,
     trade_day as trade_pair_day,
@@ -844,6 +850,87 @@ class RelativeValueStrategyTests(unittest.TestCase):
         self.assertEqual(trade.exit_reason, "eod")
         self.assertEqual(trade.holding_minutes, 360)
         self.assertEqual(trade.exit_time.astimezone().minute, 0)
+
+
+class OpeningPressureStrategyTests(unittest.TestCase):
+    def _session(
+        self,
+        day: date,
+        *,
+        first_close: Decimal = Decimal("100"),
+        opens: dict[int, Decimal] = None,
+        closes: dict[int, Decimal] = None,
+    ) -> Session:
+        from equity_orb_strategy import EASTERN
+
+        opens = opens or {}
+        closes = closes or {}
+        start = datetime(day.year, day.month, day.day, 9, 30, tzinfo=EASTERN)
+        bars = []
+        for index in range(78):
+            bar_open = opens.get(index, Decimal("100"))
+            close = closes.get(index, first_close if index == 0 else Decimal("100"))
+            bars.append(Bar(
+                (start + timedelta(minutes=index * 5)).astimezone(timezone.utc),
+                bar_open,
+                max(bar_open, close),
+                min(bar_open, close),
+                close,
+                Decimal("1000"),
+            ))
+        return Session(day, tuple(bars))
+
+    def test_opening_pressure_selects_cross_sectional_winner_and_loser(self):
+        day = date(2022, 3, 2)
+        sessions = {symbol: self._session(day) for symbol in PRESSURE_SYMBOLS}
+        sessions["XLE"] = self._session(day, first_close=Decimal("101"))
+        sessions["XLU"] = self._session(day, first_close=Decimal("99"))
+        signal = opening_signal(sessions)
+        self.assertEqual((signal.short_symbol, signal.long_symbol), ("XLE", "XLU"))
+        self.assertEqual(signal.dispersion, Decimal("0.02"))
+
+    def test_opening_pressure_does_not_use_future_bars(self):
+        day = date(2022, 3, 2)
+        sessions = {symbol: self._session(day) for symbol in PRESSURE_SYMBOLS}
+        sessions["XLE"] = self._session(
+            day,
+            first_close=Decimal("101"),
+            closes={77: Decimal("1")},
+        )
+        sessions["XLU"] = self._session(
+            day,
+            first_close=Decimal("99"),
+            closes={77: Decimal("1000")},
+        )
+        signal = opening_signal(sessions)
+        self.assertEqual((signal.short_symbol, signal.long_symbol), ("XLE", "XLU"))
+
+    def test_opening_pressure_stop_executes_next_open_and_costs_four_orders(self):
+        day = date(2022, 3, 2)
+        sessions = {
+            "XLE": self._session(
+                day,
+                opens={1: Decimal("100"), 2: Decimal("102")},
+                closes={1: Decimal("101")},
+            ),
+            "XLU": self._session(
+                day,
+                opens={1: Decimal("100"), 2: Decimal("99")},
+                closes={1: Decimal("100")},
+            ),
+        }
+        signal = OpeningSignal("XLE", "XLU", Decimal("0.01"), Decimal("-0.01"), Decimal("0.02"))
+        with mock.patch("opening_pressure_strategy.opening_signal", return_value=signal):
+            trade = trade_pressure_day(
+                sessions,
+                equity=Decimal("1000000"),
+                cost_per_share=Decimal("0.10"),
+            )
+        self.assertEqual((trade.short_quantity, trade.long_quantity), (500, 500))
+        self.assertEqual((trade.short_exit, trade.long_exit), (Decimal("102"), Decimal("99")))
+        self.assertEqual(trade.transaction_cost, Decimal("200.00"))
+        self.assertEqual(trade.pnl, Decimal("-1700.00"))
+        self.assertEqual((trade.exit_reason, trade.holding_minutes), ("stop", 5))
 
 
 class FakeResponse:
