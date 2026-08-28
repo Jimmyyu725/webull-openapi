@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import fcntl
 import json
+import os
+from datetime import datetime, time, timezone
 from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from config import API_ENDPOINT
-from equity_forward_recorder import DATABASE, execution_diagnostics, status as recorder_status
+from equity_forward_recorder import APP_DIR, DATABASE, execution_diagnostics, status as recorder_status
 from webull_api import WebullAPI, normalize_result
 
 
 ACCOUNT_CLASSES = ("INDIVIDUAL_MARGIN", "CRYPTO")
 RESEARCH_LEDGER = Path(__file__).parent / "reports" / "research-attempt-ledger.json"
+DESK_JOURNAL = APP_DIR / "desk-journal.jsonl"
+DESK_JOURNAL_LOCK = APP_DIR / "desk-journal.lock"
+EASTERN = ZoneInfo("America/New_York")
 CRYPTO_STATE_FILE = (
     Path.home()
     / "Library"
@@ -267,4 +274,122 @@ def desk_status(
             "submitted_order_count": len(crypto_state.get("submitted_order_ids") or []),
         },
         "orders_enabled": False,
+    }
+
+
+def _journal_records(journal: Path) -> tuple[list[dict[str, Any]], list[int]]:
+    if not journal.exists():
+        return [], []
+    records = []
+    invalid_lines = []
+    for line_number, line in enumerate(journal.read_text(encoding="utf-8").splitlines(), start=1):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            invalid_lines.append(line_number)
+            continue
+        desk = record.get("desk") if isinstance(record, dict) else None
+        if not (
+            isinstance(record, dict)
+            and record.get("record_key")
+            and record.get("recorded_at")
+            and record.get("session_day")
+            and record.get("phase") in {"pre_open", "regular_hours", "post_close", "closed"}
+            and isinstance(desk, dict)
+            and desk.get("authorization_level")
+            and desk.get("orders_enabled") is False
+        ):
+            invalid_lines.append(line_number)
+            continue
+        records.append(record)
+    return records, invalid_lines
+
+
+def desk_journal_status(journal: Path = DESK_JOURNAL) -> dict[str, Any]:
+    records, invalid_lines = _journal_records(journal)
+    phases: dict[str, int] = {}
+    authorizations: dict[str, int] = {}
+    for record in records:
+        phase = str(record.get("phase"))
+        phases[phase] = phases.get(phase, 0) + 1
+        authorization = str((record.get("desk") or {}).get("authorization_level"))
+        authorizations[authorization] = authorizations.get(authorization, 0) + 1
+    last = records[-1] if records else {}
+    return {
+        "readable": not invalid_lines,
+        "decision": (
+            "BLOCKED" if invalid_lines else ("AUDIT_OK" if records else "NOT_STARTED")
+        ),
+        "journal": str(journal),
+        "entry_count": len(records),
+        "unique_session_count": len({record.get("session_day") for record in records}),
+        "phase_counts": dict(sorted(phases.items())),
+        "authorization_counts": dict(sorted(authorizations.items())),
+        "invalid_lines": invalid_lines,
+        "last_recorded_at": last.get("recorded_at"),
+        "last_record_key": last.get("record_key"),
+        "orders_enabled": False,
+    }
+
+
+def _session_phase(now: datetime) -> tuple[str, str]:
+    local = now.astimezone(EASTERN)
+    if local.weekday() >= 5:
+        phase = "closed"
+    elif local.time() < time(9, 30):
+        phase = "pre_open"
+    elif local.time() < time(16, 0):
+        phase = "regular_hours"
+    else:
+        phase = "post_close"
+    return local.date().isoformat(), phase
+
+
+def record_desk_snapshot(
+    api: WebullAPI,
+    *,
+    now: Optional[datetime] = None,
+    database: Path = DATABASE,
+    journal: Path = DESK_JOURNAL,
+    lock_file: Path = DESK_JOURNAL_LOCK,
+    crypto_automation: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    if API_ENDPOINT != "api.sandbox.webull.com":
+        raise RuntimeError("Desk journal is restricted to the Webull Sandbox endpoint")
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    session_day, phase = _session_phase(now)
+    record_key = f"{session_day}:{phase}"
+    desk = desk_status(api, database=database, crypto_automation=crypto_automation)
+    journal.parent.mkdir(parents=True, exist_ok=True)
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    with lock_file.open("w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        records, invalid_lines = _journal_records(journal)
+        if invalid_lines:
+            raise RuntimeError("Desk journal is unreadable; refusing to append")
+        existing = next(
+            (record for record in records if record.get("record_key") == record_key),
+            None,
+        )
+        if existing:
+            return {
+                "outcome": "duplicate_phase",
+                "record": existing,
+                "journal_status": desk_journal_status(journal),
+            }
+        record = {
+            "record_key": record_key,
+            "recorded_at": now.isoformat(),
+            "session_day": session_day,
+            "phase": phase,
+            "desk": desk,
+        }
+        with journal.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+    return {
+        "outcome": "recorded",
+        "record": record,
+        "journal_status": desk_journal_status(journal),
     }

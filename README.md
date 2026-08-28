@@ -368,6 +368,8 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 .venv/bin/python webull_cli.py equity-strategy forward-tca-status
 .venv/bin/python webull_cli.py equity-strategy desk-status
 .venv/bin/python webull_cli.py equity-strategy research-ledger-status
+.venv/bin/python webull_cli.py equity-strategy desk-journal-record
+.venv/bin/python webull_cli.py equity-strategy desk-journal-status
 .venv/bin/python webull_cli.py equity-strategy forward-record-install --yes
 .venv/bin/python webull_cli.py equity-strategy forward-record-uninstall --yes
 ```
@@ -379,6 +381,8 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 `desk-status`是只读的开盘前风险核对：同时汇总股票和加密账户的仓位、未完成订单、旧自动任务、前向数据Gate、TCA进度及当前自动交易授权。任何不是由未来股票策略建立的现有仓位都会列为未托管标的，自动策略不得触碰。
 
 `research-ledger-status`汇总全部历史策略尝试、已经消费的保留样本和当前研究预算。账本冻结在`reports/research-attempt-ledger.json`，人类可读审计见`reports/research-attempt-ledger.md`；失败规格不会从统计中删除。
+
+`desk-journal-record`把当前只读desk状态追加到本地JSONL审计日志；同一个美东交易日的盘前、常规时段、盘后或休市阶段各最多一条，重复运行不会重复写入。`desk-journal-status`检查日志完整性并汇总时段和授权状态；日志损坏时拒绝继续追加。文件保存在`~/Library/Application Support/WebullEquityForward/desk-journal.jsonl`，不提交Git。
 
 ## 测试
 

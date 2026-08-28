@@ -59,7 +59,9 @@ from equity_forward_recorder import (
 )
 from equity_desk import (
     RESEARCH_LEDGER,
+    desk_journal_status,
     desk_status as equity_desk_status,
+    record_desk_snapshot,
     research_status as equity_research_status,
 )
 from intraday_momentum_strategy import (
@@ -748,6 +750,46 @@ class EquityDeskTests(unittest.TestCase):
             result = equity_research_status(Path(directory) / "missing.json")
         self.assertFalse(result["readable"])
         self.assertEqual(result["decision"], "BLOCKED")
+
+    def test_desk_journal_is_idempotent_per_session_phase(self):
+        api = self._api()
+        crypto = {
+            "status": "running",
+            "state": {"paused": True, "pending_orders": {}, "submitted_order_ids": []},
+            "launch_agent": {"installed": True},
+        }
+        now = datetime(2026, 8, 28, 15, 45, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            arguments = {
+                "now": now,
+                "database": root / "missing.sqlite3",
+                "journal": root / "desk.jsonl",
+                "lock_file": root / "desk.lock",
+                "crypto_automation": crypto,
+            }
+            first = record_desk_snapshot(api, **arguments)
+            second = record_desk_snapshot(api, **arguments)
+            summary = desk_journal_status(arguments["journal"])
+            lines = arguments["journal"].read_text(encoding="utf-8").splitlines()
+        self.assertEqual(first["outcome"], "recorded")
+        self.assertEqual(second["outcome"], "duplicate_phase")
+        self.assertEqual(first["record"]["record_key"], "2026-08-28:regular_hours")
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(summary["readable"])
+        self.assertEqual(summary["entry_count"], 1)
+        self.assertEqual(summary["phase_counts"], {"regular_hours": 1})
+        self.assertEqual(summary["authorization_counts"], {"DATA_COLLECTION": 1})
+
+    def test_desk_journal_corruption_blocks_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal = Path(directory) / "desk.jsonl"
+            self.assertEqual(desk_journal_status(journal)["decision"], "NOT_STARTED")
+            journal.write_text("not-json\n", encoding="utf-8")
+            result = desk_journal_status(journal)
+        self.assertFalse(result["readable"])
+        self.assertEqual(result["decision"], "BLOCKED")
+        self.assertEqual(result["invalid_lines"], [1])
 
 
 class EquityOrbStrategyTests(unittest.TestCase):

@@ -609,6 +609,28 @@ def cmd_equity_research_status(_: WebullAPI, __: argparse.Namespace) -> int:
     return emit(research_status())
 
 
+def cmd_equity_desk_journal_record(api: WebullAPI, _: argparse.Namespace) -> int:
+    from equity_desk import record_desk_snapshot
+
+    result = record_desk_snapshot(api)
+    record = result["record"]
+    desk = record["desk"]
+    return emit({
+        "outcome": result["outcome"],
+        "record_key": record["record_key"],
+        "authorization_level": desk["authorization_level"],
+        "trading_status": desk["automatic_equity_trading"]["status"],
+        "entry_count": result["journal_status"]["entry_count"],
+        "journal": result["journal_status"]["journal"],
+    })
+
+
+def cmd_equity_desk_journal_status(_: WebullAPI, __: argparse.Namespace) -> int:
+    from equity_desk import desk_journal_status
+
+    return emit(desk_journal_status())
+
+
 def cmd_forward_record_install(_: WebullAPI, args: argparse.Namespace) -> int:
     if not args.yes:
         raise ValueError("Installing the read-only forward recorder requires --yes")
@@ -876,6 +898,10 @@ def build_parser() -> argparse.ArgumentParser:
     equity_desk.set_defaults(handler=cmd_equity_desk_status)
     equity_research = equity_sub.add_parser("research-ledger-status")
     equity_research.set_defaults(handler=cmd_equity_research_status)
+    equity_journal_record = equity_sub.add_parser("desk-journal-record")
+    equity_journal_record.set_defaults(handler=cmd_equity_desk_journal_record)
+    equity_journal_status = equity_sub.add_parser("desk-journal-status")
+    equity_journal_status.set_defaults(handler=cmd_equity_desk_journal_status)
     for name, handler in (
         ("forward-record-install", cmd_forward_record_install),
         ("forward-record-uninstall", cmd_forward_record_uninstall),
