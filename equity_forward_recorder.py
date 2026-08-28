@@ -43,7 +43,8 @@ MAX_P95_BAR_CLOSE_LAG_SECONDS = 30.0
 MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS = 0.0
 AWAKE_GUARD_START_ET = time(8, 25)
 AWAKE_GUARD_CLOSE_BUFFER_MINUTES = 10
-CAPTURE_PROTOCOL_VERSION = "2026-08-29-response-time-v1"
+CLOSE_CAPTURE_BUFFER_MINUTES = 1
+CAPTURE_PROTOCOL_VERSION = "2026-08-29-close-buffer-v2"
 LEGACY_CAPTURE_PROTOCOL_VERSION = "LEGACY_UNVERSIONED"
 NYSE_CALENDAR_SOURCE = "https://www.nyse.com/trade/hours-calendars"
 NYSE_CALENDAR_VERSION = "NYSE-2026-2028-verified-2026-08-29"
@@ -174,6 +175,18 @@ def _is_regular_hours(now: datetime) -> bool:
     local = now.astimezone(EASTERN)
     _, close = _session_schedule(local.date())
     return close is not None and time(9, 30) <= local.time() < close
+
+
+def _is_capture_window(now: datetime) -> bool:
+    local = now.astimezone(EASTERN)
+    _, close = _session_schedule(local.date())
+    if close is None:
+        return False
+    session_open = datetime.combine(local.date(), time(9, 30), EASTERN)
+    session_close = datetime.combine(local.date(), close, EASTERN)
+    return session_open <= local < session_close + timedelta(
+        minutes=CLOSE_CAPTURE_BUFFER_MINUTES
+    )
 
 
 def _latest_closed_bars(api: WebullAPI, now: datetime) -> dict[str, dict[str, Any]]:
@@ -1324,7 +1337,7 @@ def record_once(
             and scheduled_close is not None
         ):
             _ensure_awake_guard(now, scheduled_close)
-        if not _is_regular_hours(now):
+        if not _is_capture_window(now):
             return {
                 "outcome": "outside_regular_hours",
                 "session_type": session_type,

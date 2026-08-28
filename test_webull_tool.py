@@ -758,6 +758,32 @@ class EquityForwardRecorderTests(unittest.TestCase):
         self.assertEqual(result["recorded"], 0)
         self.assertFalse(database.exists())
 
+    def test_forward_recorder_captures_final_bar_just_after_close(self):
+        now = datetime(2026, 8, 28, 20, 0, 15, tzinfo=timezone.utc)
+        api = self._api(now)
+        payload = api.data.market_data.get_batch_history_bar.return_value.json()
+        for item in payload["result"]:
+            item["result"][0]["time"] = "2026-08-28T19:59:00+00:00"
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            result = record_equity_forward_once(
+                api,
+                now=now,
+                database=database,
+                lock_file=Path(directory) / "forward.lock",
+            )
+            coverage = equity_session_coverage(database)["sessions"][0]
+            with sqlite3.connect(database) as connection:
+                bar_times = {
+                    row[0] for row in connection.execute("SELECT bar_time FROM samples")
+                }
+
+        self.assertEqual(result["recorded"], 3)
+        self.assertEqual(bar_times, {"2026-08-28T19:59:00+00:00"})
+        self.assertEqual(coverage["closing_anchor_missing_minutes"], 29)
+        self.assertNotIn("15:59", coverage["closing_anchor_missing_examples_et"])
+        self.assertFalse(equity_forward_is_regular_hours(now))
+
     def test_nyse_calendar_skips_closed_and_unsupported_days(self):
         self.assertEqual(
             equity_forward_session_schedule(date(2026, 9, 7)),
