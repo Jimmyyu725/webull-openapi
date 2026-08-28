@@ -1,4 +1,5 @@
 import json
+import signal
 import sqlite3
 import tempfile
 import unittest
@@ -57,6 +58,9 @@ from equity_forward_recorder import (
     LAUNCH_LABEL as EQUITY_FORWARD_LAUNCH_LABEL,
     SCHEMA as EQUITY_FORWARD_SCHEMA,
     SYMBOLS as EQUITY_FORWARD_SYMBOLS,
+    _awake_guard_duration as equity_forward_awake_guard_duration,
+    _ensure_awake_guard as ensure_equity_forward_awake_guard,
+    _stop_awake_guard as stop_equity_forward_awake_guard,
     _is_regular_hours as equity_forward_is_regular_hours,
     _launch_payload as equity_forward_launch_payload,
     _read_connection as equity_forward_read_connection,
@@ -636,6 +640,9 @@ class EquityForwardRecorderTests(unittest.TestCase):
             with mock.patch(
                 "equity_forward_recorder._utc_now",
                 side_effect=[cycle_time, received_at],
+            ), mock.patch(
+                "equity_forward_recorder._ensure_awake_guard",
+                side_effect=AssertionError("test started a system process"),
             ):
                 record_equity_forward_once(
                     api,
@@ -1054,6 +1061,52 @@ class EquityForwardRecorderTests(unittest.TestCase):
             {item["Minute"] for item in payload["StartCalendarInterval"]},
             set(range(60)),
         )
+
+    def test_forward_awake_guard_is_ac_only_and_bounded_by_session(self):
+        start = datetime(2026, 8, 28, 12, 25, tzinfo=timezone.utc)
+        self.assertEqual(
+            equity_forward_awake_guard_duration(start, time(16, 0)), 27900
+        )
+        self.assertEqual(
+            equity_forward_awake_guard_duration(start, time(13, 0)), 17100
+        )
+        self.assertIsNone(
+            equity_forward_awake_guard_duration(
+                datetime(2026, 8, 28, 12, 24, tzinfo=timezone.utc), time(16, 0)
+            )
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            pid_file = Path(directory) / "awake.pid"
+            process = SimpleNamespace(pid=12345)
+            with mock.patch(
+                "equity_forward_recorder._awake_guard_status",
+                return_value={"status": "inactive"},
+            ), mock.patch(
+                "equity_forward_recorder.subprocess.Popen", return_value=process
+            ) as popen:
+                started = ensure_equity_forward_awake_guard(
+                    start, time(16, 0), pid_file
+                )
+                self.assertEqual(pid_file.read_text(encoding="utf-8"), "12345")
+
+        self.assertTrue(started)
+        command = popen.call_args.args[0]
+        self.assertEqual(command, ["/usr/bin/caffeinate", "-s", "-t", "27900"])
+        self.assertNotIn("-i", command)
+
+    def test_forward_awake_guard_stop_only_targets_verified_pid(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pid_file = Path(directory) / "awake.pid"
+            pid_file.write_text("12345", encoding="utf-8")
+            with mock.patch(
+                "equity_forward_recorder._awake_guard_status",
+                return_value={"status": "active", "pid": 12345},
+            ), mock.patch("equity_forward_recorder.os.kill") as kill:
+                stopped = stop_equity_forward_awake_guard(pid_file)
+
+            self.assertTrue(stopped)
+            kill.assert_called_once_with(12345, signal.SIGTERM)
+            self.assertFalse(pid_file.exists())
 
     def test_forward_recorder_source_has_no_trade_mutation(self):
         source = (Path(__file__).parent / "equity_forward_recorder.py").read_text(encoding="utf-8")

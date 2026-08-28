@@ -4,6 +4,7 @@ import fcntl
 import json
 import os
 import plistlib
+import signal
 import shutil
 import sqlite3
 import subprocess
@@ -29,6 +30,7 @@ DEPLOY_DIR = APP_DIR / "app"
 DEPLOY_VENV = APP_DIR / "venv"
 DATABASE = APP_DIR / "equity-forward.sqlite3"
 LOCK_FILE = APP_DIR / "equity-forward.lock"
+AWAKE_PID_FILE = APP_DIR / "equity-forward-awake.pid"
 LAUNCH_LABEL = "com.jingtianyu.webull-equity-forward"
 LAUNCH_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_LABEL}.plist"
 TARGET_SESSIONS = 20
@@ -39,6 +41,8 @@ TCA_HORIZONS_MINUTES = (1, 5, 30)
 TCA_OPERATIONAL_BUFFER_BPS = 2.0
 MAX_P95_BAR_CLOSE_LAG_SECONDS = 30.0
 MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS = 0.0
+AWAKE_GUARD_START_ET = time(8, 25)
+AWAKE_GUARD_CLOSE_BUFFER_MINUTES = 10
 CAPTURE_PROTOCOL_VERSION = "2026-08-29-response-time-v1"
 LEGACY_CAPTURE_PROTOCOL_VERSION = "LEGACY_UNVERSIONED"
 NYSE_CALENDAR_SOURCE = "https://www.nyse.com/trade/hours-calendars"
@@ -821,6 +825,80 @@ def _median(values: list[float]) -> Optional[float]:
     return round(float(median(values)), 6) if values else None
 
 
+def _awake_guard_status(pid_file: Path = AWAKE_PID_FILE) -> dict[str, Any]:
+    output = {
+        "status": "inactive",
+        "mode": "AC_POWER_ONLY",
+        "requires_ac_power": True,
+        "prevents_lid_close_or_manual_sleep": False,
+    }
+    try:
+        pid = int(pid_file.read_text(encoding="utf-8").strip())
+        process = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, ValueError):
+        return output
+    if process.returncode == 0 and Path(process.stdout.strip()).name == "caffeinate":
+        return {**output, "status": "active", "pid": pid}
+    return output
+
+
+def _awake_guard_duration(now: datetime, scheduled_close: time) -> Optional[int]:
+    local = now.astimezone(EASTERN)
+    if not AWAKE_GUARD_START_ET <= local.time() < scheduled_close:
+        return None
+    close = datetime.combine(local.date(), scheduled_close, tzinfo=EASTERN)
+    close += timedelta(minutes=AWAKE_GUARD_CLOSE_BUFFER_MINUTES)
+    return max(1, int((close - local).total_seconds()))
+
+
+def _ensure_awake_guard(
+    now: datetime,
+    scheduled_close: time,
+    pid_file: Path = AWAKE_PID_FILE,
+) -> bool:
+    if _awake_guard_status(pid_file)["status"] == "active":
+        return False
+    duration = _awake_guard_duration(now, scheduled_close)
+    if duration is None:
+        return False
+    try:
+        process = subprocess.Popen(
+            ["/usr/bin/caffeinate", "-s", "-t", str(duration)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
+        temporary = pid_file.with_suffix(".tmp")
+        temporary.write_text(str(process.pid), encoding="utf-8")
+        os.replace(temporary, pid_file)
+    except OSError:
+        return False
+    return True
+
+
+def _stop_awake_guard(pid_file: Path = AWAKE_PID_FILE) -> bool:
+    guard = _awake_guard_status(pid_file)
+    stopped = False
+    if guard["status"] == "active":
+        try:
+            os.kill(guard["pid"], signal.SIGTERM)
+            stopped = True
+        except OSError:
+            pass
+    try:
+        pid_file.unlink()
+    except FileNotFoundError:
+        pass
+    return stopped
+
+
 def _current_capture_health(connection: sqlite3.Connection) -> dict[str, Any]:
     columns = {
         row[1] for row in connection.execute("PRAGMA table_info(samples)").fetchall()
@@ -983,6 +1061,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
                 "qualification_effect": "NONE",
                 "symbols": {},
             },
+            "awake_guard": _awake_guard_status(),
             "database": str(database),
             "installed": LAUNCH_PLIST.exists(),
             "launch_label": LAUNCH_LABEL,
@@ -1099,6 +1178,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
         "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
         "capture_attempt_audit": attempt_summary,
         "current_capture_health": current_capture_health,
+        "awake_guard": _awake_guard_status(),
         "database": str(database),
         "installed": LAUNCH_PLIST.exists(),
         "launch_label": LAUNCH_LABEL,
@@ -1220,7 +1300,9 @@ def record_once(
         coverage = session_coverage(database)
         if coverage["qualified_session_count"] >= TARGET_SESSIONS:
             return {"outcome": "complete", "recorded": 0, **status(database)}
-        session_type, _ = _session_schedule(now.astimezone(EASTERN).date())
+        session_type, scheduled_close = _session_schedule(
+            now.astimezone(EASTERN).date()
+        )
         if session_type == "UNSUPPORTED":
             return {
                 "outcome": "calendar_unsupported",
@@ -1235,6 +1317,13 @@ def record_once(
                 "recorded": 0,
                 **status(database),
             }
+        if (
+            not fixed_clock
+            and database == DATABASE
+            and lock_file == LOCK_FILE
+            and scheduled_close is not None
+        ):
+            _ensure_awake_guard(now, scheduled_close)
         if not _is_regular_hours(now):
             return {
                 "outcome": "outside_regular_hours",
@@ -1421,3 +1510,4 @@ def uninstall_launch_agent() -> None:
     if LAUNCH_PLIST.exists():
         subprocess.run(["launchctl", "bootout", domain, str(LAUNCH_PLIST)], capture_output=True)
         LAUNCH_PLIST.unlink()
+    _stop_awake_guard()
