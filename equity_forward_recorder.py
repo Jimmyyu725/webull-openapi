@@ -97,6 +97,19 @@ CREATE TABLE IF NOT EXISTS metadata (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS capture_attempts (
+    attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    session_day TEXT NOT NULL,
+    session_type TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    bar_symbol_count INTEGER NOT NULL,
+    quote_symbol_count INTEGER NOT NULL,
+    recorded_rows INTEGER NOT NULL,
+    error_type TEXT
+);
 """
 
 
@@ -289,6 +302,92 @@ INSERT OR IGNORE INTO samples (
 """
 
 
+INSERT_CAPTURE_ATTEMPT = """
+INSERT INTO capture_attempts (
+    started_at, completed_at, session_day, session_type, stage, outcome,
+    bar_symbol_count, quote_symbol_count, recorded_rows, error_type
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+
+def _record_attempt(
+    connection: sqlite3.Connection,
+    *,
+    started_at: datetime,
+    completed_at: datetime,
+    session_type: str,
+    stage: str,
+    outcome: str,
+    bar_symbol_count: int = 0,
+    quote_symbol_count: int = 0,
+    recorded_rows: int = 0,
+    error_type: Optional[str] = None,
+) -> None:
+    connection.execute(
+        INSERT_CAPTURE_ATTEMPT,
+        (
+            started_at.isoformat(),
+            completed_at.isoformat(),
+            started_at.astimezone(EASTERN).date().isoformat(),
+            session_type,
+            stage,
+            outcome,
+            bar_symbol_count,
+            quote_symbol_count,
+            recorded_rows,
+            error_type,
+        ),
+    )
+    connection.commit()
+
+
+def _capture_attempt_summary(connection: sqlite3.Connection) -> dict[str, Any]:
+    available = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'capture_attempts'"
+    ).fetchone()
+    if not available:
+        return {
+            "status": "not_available",
+            "total_attempts": 0,
+            "counts_by_outcome": {},
+        }
+    counts = {
+        str(outcome): int(count)
+        for outcome, count in connection.execute(
+            "SELECT outcome, COUNT(*) FROM capture_attempts GROUP BY outcome ORDER BY outcome"
+        )
+    }
+    first = connection.execute(
+        "SELECT started_at FROM capture_attempts ORDER BY attempt_id LIMIT 1"
+    ).fetchone()
+    latest = connection.execute(
+        """
+        SELECT started_at, completed_at, stage, outcome, error_type
+        FROM capture_attempts ORDER BY attempt_id DESC LIMIT 1
+        """
+    ).fetchone()
+    return {
+        "status": "available",
+        "total_attempts": sum(counts.values()),
+        "first_started_at": first[0] if first else None,
+        "latest_started_at": latest[0] if latest else None,
+        "latest_completed_at": latest[1] if latest else None,
+        "latest_stage": latest[2] if latest else None,
+        "latest_outcome": latest[3] if latest else None,
+        "latest_error_type": latest[4] if latest else None,
+        "counts_by_outcome": counts,
+        "api_error_attempts": sum(
+            counts.get(item, 0) for item in ("BAR_API_ERROR", "SNAPSHOT_API_ERROR")
+        ),
+        "partial_response_attempts": sum(
+            counts.get(item, 0)
+            for item in ("PARTIAL_BAR_RESPONSE", "PARTIAL_SNAPSHOT_RESPONSE")
+        ),
+        "no_current_bar_attempts": counts.get("NO_CURRENT_CLOSED_BAR", 0),
+        "partial_record_attempts": counts.get("PARTIAL_RECORD", 0),
+    }
+
+
 def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
     """Report aligned valid RTH minutes without backfilling or creating orders."""
     output: dict[str, Any] = {
@@ -305,6 +404,8 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
         "max_cross_symbol_capture_skew_seconds": MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS,
         "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
+        "capture_attempt_audit_available": False,
+        "capture_attempt_count": 0,
         "complete_session_count": 0,
         "qualified_session_count": 0,
         "target_qualified_sessions": TARGET_SESSIONS,
@@ -338,6 +439,19 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
             """,
             SYMBOLS,
         ).fetchall()
+        attempt_summary = _capture_attempt_summary(connection)
+        attempt_rows = (
+            connection.execute(
+                """
+                SELECT session_day, outcome, COUNT(*)
+                FROM capture_attempts
+                GROUP BY session_day, outcome
+                ORDER BY session_day, outcome
+                """
+            ).fetchall()
+            if attempt_summary["status"] == "available"
+            else []
+        )
 
     grouped: dict[str, dict[str, dict[str, Any]]] = {}
     for (
@@ -386,6 +500,26 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
             values["valid_quote"].add(timestamp)
             if spread_bps is not None:
                 values["spreads"][timestamp] = float(spread_bps)
+
+    attempts_by_session: dict[str, dict[str, int]] = {}
+    for session_day, outcome, count in attempt_rows:
+        attempts_by_session.setdefault(str(session_day), {})[str(outcome)] = int(count)
+        grouped.setdefault(
+            str(session_day),
+            {
+                item: {
+                    "observed": set(),
+                    "valid_bar": set(),
+                    "valid_quote": set(),
+                    "bar_close_lags": {},
+                    "request_times": {},
+                    "quote_ages": {},
+                    "spreads": {},
+                    "capture_protocol_versions": set(),
+                }
+                for item in SYMBOLS
+            },
+        )
 
     sessions: list[dict[str, Any]] = []
     for session_day in sorted(grouped):
@@ -578,6 +712,8 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         sessions.append({
             "session_day": session_day,
             "session_type": session_type,
+            "capture_attempt_count": sum(attempts_by_session.get(session_day, {}).values()),
+            "capture_attempt_outcomes": attempts_by_session.get(session_day, {}),
             "eligible_full_session": eligible_full_session,
             "scheduled_close_et": (
                 scheduled_close.strftime("%H:%M") if scheduled_close else None
@@ -654,6 +790,8 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
     qualified_sessions = [item["session_day"] for item in sessions if item["qualified"]]
     output.update({
         "status": "recording" if sessions else "not_started",
+        "capture_attempt_audit_available": attempt_summary["status"] == "available",
+        "capture_attempt_count": attempt_summary["total_attempts"],
         "complete_session_count": len(complete_sessions),
         "qualified_session_count": len(qualified_sessions),
         "complete_sessions": complete_sessions,
@@ -700,6 +838,11 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
             "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
             "max_cross_symbol_capture_skew_seconds": MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS,
             "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
+            "capture_attempt_audit": {
+                "status": "not_available",
+                "total_attempts": 0,
+                "counts_by_outcome": {},
+            },
             "database": str(database),
             "installed": LAUNCH_PLIST.exists(),
             "launch_label": LAUNCH_LABEL,
@@ -791,6 +934,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
         started = connection.execute(
             "SELECT value FROM metadata WHERE key = 'started_at'"
         ).fetchone()
+        attempt_summary = _capture_attempt_summary(connection)
     complete_run = len(qualified) >= TARGET_SESSIONS
     all_quality_passed = complete_run
     return {
@@ -812,6 +956,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
         "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
         "max_cross_symbol_capture_skew_seconds": MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS,
         "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
+        "capture_attempt_audit": attempt_summary,
         "database": str(database),
         "installed": LAUNCH_PLIST.exists(),
         "launch_label": LAUNCH_LABEL,
@@ -956,23 +1101,108 @@ def record_once(
                 **status(database),
             }
         with closing(_connect(database, now)) as connection:
-            bars = _latest_closed_bars(api, now)
-            if set(bars) != set(SYMBOLS):
-                return {"outcome": "no_current_closed_bar", "recorded": 0, **status(database)}
-            quotes = _snapshot_rows(api)
-            if set(quotes) != set(SYMBOLS):
-                raise RuntimeError("Webull snapshot response omitted a forward-recording symbol")
-            received_at = now if fixed_clock else _utc_now()
-            recorded = 0
-            for symbol in SYMBOLS:
-                cursor = connection.execute(
-                    INSERT_SAMPLE,
-                    _record(symbol, bars[symbol], quotes[symbol], received_at),
+            completed_at = lambda: now if fixed_clock else _utc_now().astimezone(timezone.utc)
+            try:
+                bars = _latest_closed_bars(api, now)
+            except Exception as exc:
+                _record_attempt(
+                    connection,
+                    started_at=now,
+                    completed_at=completed_at(),
+                    session_type=session_type,
+                    stage="BARS",
+                    outcome="BAR_API_ERROR",
+                    error_type=type(exc).__name__,
                 )
-                recorded += cursor.rowcount
-            connection.commit()
+                raise
+            if set(bars) != set(SYMBOLS):
+                audit_outcome = (
+                    "PARTIAL_BAR_RESPONSE" if bars else "NO_CURRENT_CLOSED_BAR"
+                )
+                _record_attempt(
+                    connection,
+                    started_at=now,
+                    completed_at=completed_at(),
+                    session_type=session_type,
+                    stage="BARS",
+                    outcome=audit_outcome,
+                    bar_symbol_count=len(bars),
+                )
+                return {
+                    "outcome": audit_outcome.lower(),
+                    "session_type": session_type,
+                    "recorded": 0,
+                    **status(database),
+                }
+            try:
+                quotes = _snapshot_rows(api)
+            except Exception as exc:
+                _record_attempt(
+                    connection,
+                    started_at=now,
+                    completed_at=completed_at(),
+                    session_type=session_type,
+                    stage="SNAPSHOTS",
+                    outcome="SNAPSHOT_API_ERROR",
+                    bar_symbol_count=len(bars),
+                    error_type=type(exc).__name__,
+                )
+                raise
+            if set(quotes) != set(SYMBOLS):
+                _record_attempt(
+                    connection,
+                    started_at=now,
+                    completed_at=completed_at(),
+                    session_type=session_type,
+                    stage="SNAPSHOTS",
+                    outcome="PARTIAL_SNAPSHOT_RESPONSE",
+                    bar_symbol_count=len(bars),
+                    quote_symbol_count=len(quotes),
+                )
+                raise RuntimeError("Webull snapshot response omitted a forward-recording symbol")
+            received_at = completed_at()
+            recorded = 0
+            try:
+                for symbol in SYMBOLS:
+                    cursor = connection.execute(
+                        INSERT_SAMPLE,
+                        _record(symbol, bars[symbol], quotes[symbol], received_at),
+                    )
+                    recorded += cursor.rowcount
+                audit_outcome = (
+                    "RECORDED"
+                    if recorded == len(SYMBOLS)
+                    else "DUPLICATE_BAR"
+                    if recorded == 0
+                    else "PARTIAL_RECORD"
+                )
+                _record_attempt(
+                    connection,
+                    started_at=now,
+                    completed_at=received_at,
+                    session_type=session_type,
+                    stage="COMMIT",
+                    outcome=audit_outcome,
+                    bar_symbol_count=len(bars),
+                    quote_symbol_count=len(quotes),
+                    recorded_rows=recorded,
+                )
+            except Exception as exc:
+                connection.rollback()
+                _record_attempt(
+                    connection,
+                    started_at=now,
+                    completed_at=received_at,
+                    session_type=session_type,
+                    stage="COMMIT",
+                    outcome="RECORD_ERROR",
+                    bar_symbol_count=len(bars),
+                    quote_symbol_count=len(quotes),
+                    error_type=type(exc).__name__,
+                )
+                raise
     return {
-        "outcome": "recorded" if recorded else "duplicate_bar",
+        "outcome": audit_outcome.lower(),
         "session_type": session_type,
         "recorded": recorded,
         **status(database),

@@ -26,6 +26,8 @@ Webull Sandbox 的股票实时快照与一分钟K线，是否足以支持以后�
 
 横截面同步实现澄清（2026-08-29）：每次采样以同一次批量快照响应完成时间写入三个标的，因此同一闭合分钟的`SPY`、`QQQ`和`AAPL`记录必须具有完全相同的`request_time`，允许的最大跨标的偏差固定为0秒。任何偏差即使未使逐标的30秒闭合延迟Gate失败，也会使整日横截面同步Gate失败，避免把非同时可得的价格用于相对强弱、配对或事件研究。
 
+采集尝试审计实现澄清（2026-08-29）：每个常规交易时段内实际启动的采集循环必须追加一条`capture_attempts`记录，保留开始/完成时间、会话日期与类型、最后到达的阶段、K线与快照响应标的数、写入行数以及结果分类。分类只描述可验证的采集事实，例如成功、重复、无当前闭合K线、部分响应或API异常；异常只保存类型，不保存报错正文。Webull快照没有提供足以确认全市场熔断、单股LULD停牌、行情服务故障或本机网络故障的统一实时状态，因此禁止仅凭K线缺口推断原因。休市、日历不支持及盘外检查不创建审计记录，也不调用行情接口。
+
 ## 每条记录
 
 - 行情响应完成后的本地采集时间、标的、闭合K线时间和Webull交易时段标签；采集时间必须代表数据实际可用时刻，不能使用网络请求前的循环开始时间。
@@ -33,6 +35,7 @@ Webull Sandbox 的股票实时快照与一分钟K线，是否足以支持以后�
 - 最新价、买一、卖一、买一量、卖一量、Webull报价时间。
 - 中间价、完整报价点差（基点）、报价年龄（秒）和质量标记。
 - 冻结的采集协议版本；版本描述数据怎样取得，不描述交易策略。
+- 与样本表分离的采集尝试审计；即使该循环没有产生样本，也保留最后完成阶段和事实结果。审计采用只追加语义，诊断不得修改或回填旧尝试。
 
 ## 质量Gate
 
@@ -50,6 +53,7 @@ Webull Sandbox 的股票实时快照与一分钟K线，是否足以支持以后�
 - 完整报价点差的95分位数不超过5个基点。
 - 请求时间不得早于对应M1 K线闭合时间；K线闭合到请求的延迟95分位数不得超过30秒。
 - 运行日志没有订单提交事件；记录器代码不引用任何下单接口。
+- 当日审计结果可解释缺口发生在K线、快照还是本地写入阶段，但任何未知或部分结果都不得被重新标注成市场停牌。
 
 时效实现澄清（2026-08-29）：新增的30秒Gate用于保证闭合K线与同次NBBO快照仍具有可交易的时间对应关系。它只从已经冻结并前向记录的`bar_time`与`request_time`推导，不修改旧数据、不回填缺口，也不降低任何原有门槛。
 
@@ -60,8 +64,8 @@ Gate通过只说明前向数据可用于后续研究，不说明任何策略有�
 - `forward-record-once`执行一次只读采样。
 - 休市日返回`market_closed`，超出2026至2028官方日历窗口返回`calendar_unsupported`；两者都不得调用行情API或创建数据库。
 - 独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`，与现有加密任务隔离；按墙钟每个整分钟触发，API执行时间不得累积为下一次触发的调度漂移。
-- `forward-record-status`只读汇总当前样本和质量指标。
-- `forward-coverage-status`逐日列出每标的和三标的共同有效分钟、安装前/尾部缺口、内部采集缺口、最长连续内部缺口及最多10个缺口示例。
+- `forward-record-status`只读汇总当前样本、质量指标、采集尝试总数、最近结果及各结果计数。
+- `forward-coverage-status`逐日列出每标的和三标的共同有效分钟、安装前/尾部缺口、内部采集缺口、最长连续内部缺口、采集尝试结果计数及最多10个缺口示例。
 - 所有状态、覆盖率和TCA诊断必须以SQLite `mode=ro`打开数据库；只有采集命令可以取得可写连接，诊断路径的任何写入都必须由数据库层拒绝。
 - `forward-record-install --yes`与`forward-record-uninstall --yes`安装或移除本地每分钟任务。
 - 达到20个合格交易日后自动停止写入；完整但质量失败的交易日不会触发停止。用户可随时卸载。
@@ -70,11 +74,14 @@ Gate通过只说明前向数据可用于后续研究，不说明任何策略有�
 
 - 不使用超过一档的订单簿；Webull当前股票接口拒绝`depth > 1`。
 - 不回填安装前的历史快照，不用后见数据伪造前向记录。
+- 不把缺失行情自动归因为MWCB、LULD、单股停牌或任何其他市场事件；若未来需要该分类，必须接入独立、可审计的官方事件源。
 - 不计算策略收益、不调参、不创建模拟订单、不修改任何账户或现有持仓。
 
 ## 依据
 
 - [Webull Market Data Getting Started](https://developer.webull.com/apis/docs/market-data-api/getting-started/)
 - [Webull Stock Historical Bars](https://developer.webull.com/apis/docs/reference/broker-market-data-api/bars-using-get/)
+- [Webull Stock Snapshots](https://developer.webull.com/apis/docs/reference/snapshot/)
 - [NYSE Holidays & Trading Hours](https://www.nyse.com/trade/hours-calendars)
+- [NYSE Trading Information: LULD and Market-Wide Circuit Breakers](https://www.nyse.com/trade/trading-information)
 - [Nagel, Evaporating Liquidity](https://academic.oup.com/rfs/article-abstract/25/7/2005/1602153)

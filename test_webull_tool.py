@@ -555,9 +555,29 @@ class EquityForwardRecorderTests(unittest.TestCase):
             first = record_equity_forward_once(api, now=now, database=database, lock_file=lock)
             second = record_equity_forward_once(api, now=now, database=database, lock_file=lock)
             current = equity_forward_status(database)
+            with sqlite3.connect(database) as connection:
+                attempts = connection.execute(
+                    """
+                    SELECT stage, outcome, bar_symbol_count, quote_symbol_count,
+                           recorded_rows, error_type
+                    FROM capture_attempts ORDER BY attempt_id
+                    """
+                ).fetchall()
         self.assertEqual(first["recorded"], 3)
         self.assertEqual(second["outcome"], "duplicate_bar")
         self.assertEqual(second["recorded"], 0)
+        self.assertEqual(
+            attempts,
+            [
+                ("COMMIT", "RECORDED", 3, 3, 3, None),
+                ("COMMIT", "DUPLICATE_BAR", 3, 3, 0, None),
+            ],
+        )
+        self.assertEqual(current["capture_attempt_audit"]["total_attempts"], 2)
+        self.assertEqual(
+            current["capture_attempt_audit"]["counts_by_outcome"],
+            {"DUPLICATE_BAR": 1, "RECORDED": 1},
+        )
         self.assertTrue(all(item["samples"] == 1 for item in current["symbols"].values()))
         self.assertTrue(all(item["p95_quote_age_seconds"] >= 0 for item in current["symbols"].values()))
         self.assertTrue(all(
@@ -624,6 +644,7 @@ class EquityForwardRecorderTests(unittest.TestCase):
             database = Path(directory) / "forward.sqlite3"
             with sqlite3.connect(database) as connection:
                 connection.executescript(legacy_schema)
+                connection.execute("DROP TABLE capture_attempts")
                 legacy_columns = [
                     row[1] for row in connection.execute("PRAGMA table_info(samples)")
                 ]
@@ -673,6 +694,10 @@ class EquityForwardRecorderTests(unittest.TestCase):
                         "SELECT capture_protocol_version FROM samples"
                     )
                 }
+                attempt_tables = connection.execute(
+                    "SELECT COUNT(*) FROM sqlite_master "
+                    "WHERE type = 'table' AND name = 'capture_attempts'"
+                ).fetchone()[0]
 
         self.assertEqual(result["recorded"], 3)
         self.assertEqual(
@@ -681,19 +706,22 @@ class EquityForwardRecorderTests(unittest.TestCase):
         self.assertFalse(legacy_coverage["qualified"])
         self.assertIn("capture_protocol_version", columns)
         self.assertEqual(versions, {None, EQUITY_FORWARD_CAPTURE_PROTOCOL_VERSION})
+        self.assertEqual(attempt_tables, 1)
 
     def test_forward_recorder_skips_outside_regular_hours_without_market_call(self):
         now = datetime(2026, 8, 28, 22, 0, tzinfo=timezone.utc)
         api = mock.Mock(spec=[])
         with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
             result = record_equity_forward_once(
                 api,
                 now=now,
-                database=Path(directory) / "forward.sqlite3",
+                database=database,
                 lock_file=Path(directory) / "forward.lock",
             )
         self.assertEqual(result["outcome"], "outside_regular_hours")
         self.assertEqual(result["recorded"], 0)
+        self.assertFalse(database.exists())
 
     def test_nyse_calendar_skips_closed_and_unsupported_days(self):
         self.assertEqual(
@@ -776,14 +804,94 @@ class EquityForwardRecorderTests(unittest.TestCase):
         for item in payload["result"]:
             item["result"][0]["time"] = (now - timedelta(minutes=4)).isoformat()
         with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
             result = record_equity_forward_once(
                 api,
                 now=now,
-                database=Path(directory) / "forward.sqlite3",
+                database=database,
                 lock_file=Path(directory) / "forward.lock",
             )
+            with sqlite3.connect(database) as connection:
+                attempt = connection.execute(
+                    """
+                    SELECT stage, outcome, bar_symbol_count, quote_symbol_count,
+                           recorded_rows, error_type
+                    FROM capture_attempts
+                    """
+                ).fetchone()
+            coverage = equity_session_coverage(database)
         self.assertEqual(result["outcome"], "no_current_closed_bar")
+        self.assertEqual(
+            attempt, ("BARS", "NO_CURRENT_CLOSED_BAR", 0, 0, 0, None)
+        )
+        self.assertTrue(coverage["capture_attempt_audit_available"])
+        self.assertEqual(coverage["capture_attempt_count"], 1)
+        self.assertEqual(coverage["sessions"][0]["capture_attempt_count"], 1)
+        self.assertEqual(
+            coverage["sessions"][0]["capture_attempt_outcomes"],
+            {"NO_CURRENT_CLOSED_BAR": 1},
+        )
         api.data.market_data.get_snapshot.assert_not_called()
+
+    def test_forward_recorder_audits_partial_snapshot_without_guessing_halt(self):
+        now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        api = self._api(now)
+        api.data.market_data.get_snapshot.return_value.json().pop()
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            with self.assertRaisesRegex(RuntimeError, "omitted"):
+                record_equity_forward_once(
+                    api,
+                    now=now,
+                    database=database,
+                    lock_file=Path(directory) / "forward.lock",
+                )
+            with sqlite3.connect(database) as connection:
+                attempt = connection.execute(
+                    """
+                    SELECT stage, outcome, bar_symbol_count, quote_symbol_count,
+                           recorded_rows, error_type
+                    FROM capture_attempts
+                    """
+                ).fetchone()
+
+        self.assertEqual(
+            attempt, ("SNAPSHOTS", "PARTIAL_SNAPSHOT_RESPONSE", 3, 2, 0, None)
+        )
+
+    def test_forward_recorder_audits_api_error_type_without_message(self):
+        now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        api = self._api(now)
+        api.data.market_data.get_batch_history_bar.side_effect = TimeoutError(
+            "provider detail must not enter audit storage"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            with self.assertRaises(TimeoutError):
+                record_equity_forward_once(
+                    api,
+                    now=now,
+                    database=database,
+                    lock_file=Path(directory) / "forward.lock",
+                )
+            with sqlite3.connect(database) as connection:
+                columns = {
+                    row[1] for row in connection.execute(
+                        "PRAGMA table_info(capture_attempts)"
+                    )
+                }
+                attempt = connection.execute(
+                    """
+                    SELECT stage, outcome, bar_symbol_count, quote_symbol_count,
+                           recorded_rows, error_type
+                    FROM capture_attempts
+                    """
+                ).fetchone()
+
+        self.assertNotIn("error_message", columns)
+        self.assertEqual(
+            attempt, ("BARS", "BAR_API_ERROR", 0, 0, 0, "TimeoutError")
+        )
 
     def test_forward_recorder_preserves_and_rejects_future_quote_time(self):
         now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
