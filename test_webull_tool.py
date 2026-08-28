@@ -564,6 +564,29 @@ class EquityForwardRecorderTests(unittest.TestCase):
         self.assertEqual(api.data.market_data.get_snapshot.call_count, 2)
         self.assertFalse(hasattr(api, "trade"))
 
+    def test_forward_recorder_anchors_time_after_snapshot_response(self):
+        cycle_time = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        received_at = cycle_time + timedelta(seconds=2)
+        api = self._api(cycle_time)
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            with mock.patch(
+                "equity_forward_recorder._utc_now",
+                side_effect=[cycle_time, received_at],
+            ):
+                record_equity_forward_once(
+                    api,
+                    database=database,
+                    lock_file=Path(directory) / "forward.lock",
+                )
+            with sqlite3.connect(database) as connection:
+                rows = connection.execute(
+                    "SELECT request_time, quote_age_seconds FROM samples"
+                ).fetchall()
+
+        self.assertEqual({row[0] for row in rows}, {received_at.isoformat()})
+        self.assertEqual({row[1] for row in rows}, {3.0})
+
     def test_forward_recorder_skips_outside_regular_hours_without_market_call(self):
         now = datetime(2026, 8, 29, 15, 0, tzinfo=timezone.utc)
         api = mock.Mock(spec=[])
@@ -592,6 +615,81 @@ class EquityForwardRecorderTests(unittest.TestCase):
             )
         self.assertEqual(result["outcome"], "no_current_closed_bar")
         api.data.market_data.get_snapshot.assert_not_called()
+
+    def test_forward_recorder_preserves_and_rejects_future_quote_time(self):
+        now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        api = self._api(now)
+        snapshots = api.data.market_data.get_snapshot.return_value.json()
+        for item in snapshots:
+            item["quote_time"] = int((now + timedelta(seconds=1)).timestamp() * 1000)
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            result = record_equity_forward_once(
+                api,
+                now=now,
+                database=database,
+                lock_file=Path(directory) / "forward.lock",
+            )
+            current = equity_forward_status(database)
+            coverage = equity_session_coverage(database)
+            with sqlite3.connect(database) as connection:
+                ages = [
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT quote_age_seconds FROM samples ORDER BY symbol"
+                    )
+                ]
+
+        self.assertEqual(result["recorded"], 3)
+        self.assertEqual(ages, [-1.0, -1.0, -1.0])
+        self.assertTrue(all(
+            item["valid_quote_coverage"] == 0.0
+            and item["negative_quote_age_count"] == 1
+            and not item["quality_checks"]["quote_time_order"]
+            for item in current["symbols"].values()
+        ))
+        self.assertTrue(all(
+            "quote_time_order" in item["quality_failures"]
+            for item in coverage["sessions"][0]["symbols"].values()
+        ))
+
+    def test_forward_quality_rederives_legacy_quote_age_and_excludes_tca(self):
+        start = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            lock = Path(directory) / "forward.lock"
+            for offset in (0, 1):
+                now = start + timedelta(minutes=offset)
+                api = self._api(now)
+                for item in api.data.market_data.get_snapshot.return_value.json():
+                    item["quote_time"] = int(
+                        (now + timedelta(seconds=1)).timestamp() * 1000
+                    )
+                record_equity_forward_once(
+                    api, now=now, database=database, lock_file=lock
+                )
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "UPDATE samples SET valid_quote = 1, quote_age_seconds = 1, "
+                    "mid = (bid + ask) / 2, spread_bps = 1"
+                )
+            current = equity_forward_status(database)
+            coverage = equity_session_coverage(database)
+            diagnostics = equity_execution_diagnostics(database)
+
+        self.assertTrue(all(
+            item["negative_quote_age_count"] == 2
+            and item["valid_quote_coverage"] == 0.0
+            for item in current["symbols"].values()
+        ))
+        self.assertTrue(all(
+            item["negative_quote_age_count"] == 2
+            for item in coverage["sessions"][0]["symbols"].values()
+        ))
+        self.assertTrue(all(
+            item["horizons"]["1"]["paired_observations"] == 0
+            for item in diagnostics["symbols"].values()
+        ))
 
     def test_forward_quality_rejects_late_or_future_bar_timestamps(self):
         now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
@@ -671,7 +769,7 @@ class EquityForwardRecorderTests(unittest.TestCase):
                     100.01,
                     100.0,
                     100.0,
-                    bar_time.isoformat(),
+                    (bar_time + timedelta(seconds=59)).isoformat(),
                     100.0,
                     2.0,
                     1.0,

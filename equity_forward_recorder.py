@@ -75,6 +75,10 @@ def _ensure_sandbox() -> None:
         raise RuntimeError("Equity forward recording is restricted to the Webull Sandbox endpoint")
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 @contextmanager
 def _lock(lock_file: Path = LOCK_FILE) -> Iterator[None]:
     lock_file.parent.mkdir(parents=True, exist_ok=True)
@@ -93,9 +97,6 @@ def _connect(database: Path = DATABASE, now: Optional[datetime] = None) -> sqlit
     connection.execute(
         "INSERT OR IGNORE INTO metadata(key, value) VALUES ('started_at', ?)",
         ((now or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat(),),
-    )
-    connection.execute(
-        "UPDATE samples SET quote_age_seconds = ABS(quote_age_seconds) WHERE quote_age_seconds < 0"
     )
     connection.commit()
     return connection
@@ -147,6 +148,15 @@ def _decimal(row: dict[str, Any], key: str) -> Optional[Decimal]:
     return Decimal(str(value))
 
 
+def _stored_quote_age(request_time: str, quote_time: Optional[str]) -> Optional[float]:
+    if not quote_time:
+        return None
+    return (
+        parse_time(request_time).astimezone(timezone.utc)
+        - parse_time(quote_time).astimezone(timezone.utc)
+    ).total_seconds()
+
+
 def _record(symbol: str, bar: dict[str, Any], quote: dict[str, Any], now: datetime) -> tuple[Any, ...]:
     bar_time = bar["parsed_time"]
     open_price = Decimal(str(bar["open"]))
@@ -165,6 +175,7 @@ def _record(symbol: str, bar: dict[str, Any], quote: dict[str, Any], now: dateti
         if quote_ms not in (None, "")
         else None
     )
+    quote_age = Decimal(str((now - quote_time).total_seconds())) if quote_time else None
     valid_quote = bool(
         bid is not None
         and ask is not None
@@ -175,10 +186,11 @@ def _record(symbol: str, bar: dict[str, Any], quote: dict[str, Any], now: dateti
         and bid_size >= 0
         and ask_size >= 0
         and quote_time is not None
+        and quote_age is not None
+        and quote_age >= 0
     )
     mid = (bid + ask) / Decimal("2") if valid_quote else None
     spread_bps = (ask - bid) / mid * Decimal("10000") if mid else None
-    quote_age = Decimal(str(abs((now - quote_time).total_seconds()))) if quote_time else None
     valid_bar = bool(
         open_price > 0
         and high > 0
@@ -249,7 +261,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         rows = connection.execute(
             """
             SELECT symbol, session_day, bar_time, request_time, valid_bar, valid_quote,
-                   quote_age_seconds, spread_bps
+                   quote_time, spread_bps
             FROM samples
             WHERE symbol IN (?, ?, ?)
             ORDER BY session_day, bar_time, symbol
@@ -265,7 +277,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         request_time,
         valid_bar,
         valid_quote,
-        quote_age_seconds,
+        quote_time,
         spread_bps,
     ) in rows:
         values = grouped.setdefault(
@@ -284,16 +296,17 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         )[symbol]
         timestamp = parse_time(bar_time).astimezone(timezone.utc)
         request_timestamp = parse_time(request_time).astimezone(timezone.utc)
+        quote_age_seconds = _stored_quote_age(request_time, quote_time)
         values["observed"].add(timestamp)
         values["bar_close_lags"][timestamp] = (
             request_timestamp - timestamp - timedelta(minutes=1)
         ).total_seconds()
         if valid_bar:
             values["valid_bar"].add(timestamp)
-        if valid_quote:
+        if quote_age_seconds is not None:
+            values["quote_ages"][timestamp] = float(quote_age_seconds)
+        if valid_quote and quote_age_seconds is not None and quote_age_seconds >= 0:
             values["valid_quote"].add(timestamp)
-            if quote_age_seconds is not None:
-                values["quote_ages"][timestamp] = float(quote_age_seconds)
             if spread_bps is not None:
                 values["spreads"][timestamp] = float(spread_bps)
 
@@ -320,6 +333,11 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                 for value in valid_quote_bars
                 if value in values["quote_ages"]
             ]
+            all_quote_ages = [
+                values["quote_ages"][value]
+                for value in valid_bars
+                if value in values["quote_ages"]
+            ]
             spreads = [
                 values["spreads"][value]
                 for value in valid_quote_bars
@@ -334,9 +352,11 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
             )
             p95_quote_age = _percentile(quote_ages, 0.95)
             p95_spread = _percentile(spreads, 0.95)
+            negative_quote_ages = sum(value < 0 for value in all_quote_ages)
             checks = {
                 "valid_bar_coverage": valid_bar_coverage == 1.0,
                 "valid_quote_coverage": valid_quote_coverage >= 0.99,
+                "quote_time_order": negative_quote_ages == 0,
                 "p95_quote_age": p95_quote_age is not None and p95_quote_age <= 5.0,
                 "p95_spread": p95_spread is not None and p95_spread <= 5.0,
                 "bar_close_time_order": negative_lags == 0,
@@ -354,6 +374,8 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                 "valid_bar_coverage": round(valid_bar_coverage, 6),
                 "valid_quote_coverage": round(valid_quote_coverage, 6),
                 "p95_quote_age_seconds": p95_quote_age,
+                "negative_quote_age_count": negative_quote_ages,
+                "quote_timeliness": "PASS" if negative_quote_ages == 0 else "FAIL",
                 "p95_spread_bps": p95_spread,
                 "bar_timeliness": (
                     "PASS"
@@ -488,23 +510,33 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
             summary = connection.execute(
                 """
                 SELECT COUNT(*), MIN(bar_time), MAX(bar_time), COUNT(DISTINCT session_day),
-                       AVG(valid_bar), AVG(valid_quote)
+                       AVG(valid_bar)
                 FROM samples WHERE symbol = ?
                 """,
                 (symbol,),
             ).fetchone()
-            spreads = [
-                row[0] for row in connection.execute(
-                    "SELECT spread_bps FROM samples WHERE symbol = ? AND valid_quote = 1",
-                    (symbol,),
-                ) if row[0] is not None
+            quote_rows = connection.execute(
+                "SELECT request_time, quote_time, valid_quote, spread_bps "
+                "FROM samples WHERE symbol = ?",
+                (symbol,),
+            ).fetchall()
+            all_ages = [
+                age
+                for row in quote_rows
+                if (age := _stored_quote_age(row[0], row[1])) is not None
+            ]
+            valid_quote_rows = [
+                row
+                for row in quote_rows
+                if row[2]
+                and (age := _stored_quote_age(row[0], row[1])) is not None
+                and age >= 0
             ]
             ages = [
-                row[0] for row in connection.execute(
-                    "SELECT quote_age_seconds FROM samples WHERE symbol = ? AND valid_quote = 1",
-                    (symbol,),
-                ) if row[0] is not None
+                _stored_quote_age(row[0], row[1])
+                for row in valid_quote_rows
             ]
+            spreads = [row[3] for row in valid_quote_rows if row[3] is not None]
             bar_close_lags = [
                 (
                     parse_time(row[1]).astimezone(timezone.utc)
@@ -520,10 +552,15 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
             p95_age = _percentile(ages, 0.95)
             p95_bar_close_lag = _percentile(bar_close_lags, 0.95)
             negative_bar_close_lags = sum(value < 0 for value in bar_close_lags)
+            negative_quote_ages = sum(value < 0 for value in all_ages)
+            valid_quote_coverage = (
+                len(valid_quote_rows) / summary[0] if summary[0] else 0.0
+            )
             checks = {
                 "qualified_sessions": len(qualified) >= TARGET_SESSIONS,
                 "valid_bar_coverage": (summary[4] or 0.0) == 1.0,
-                "valid_quote_coverage": (summary[5] or 0.0) >= 0.99,
+                "valid_quote_coverage": valid_quote_coverage >= 0.99,
+                "quote_time_order": negative_quote_ages == 0,
                 "p95_quote_age": p95_age is not None and p95_age <= 5.0,
                 "p95_spread": p95_spread is not None and p95_spread <= 5.0,
                 "bar_close_time_order": negative_bar_close_lags == 0,
@@ -538,9 +575,10 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
                 "last_bar": summary[2],
                 "observed_sessions": summary[3],
                 "valid_bar_coverage": round(summary[4] or 0.0, 6),
-                "valid_quote_coverage": round(summary[5] or 0.0, 6),
+                "valid_quote_coverage": round(valid_quote_coverage, 6),
                 "p95_spread_bps": p95_spread,
                 "p95_quote_age_seconds": p95_age,
+                "negative_quote_age_count": negative_quote_ages,
                 "p95_bar_close_lag_seconds": p95_bar_close_lag,
                 "negative_bar_close_lag_count": negative_bar_close_lags,
                 "quality_checks": checks,
@@ -599,7 +637,7 @@ def execution_diagnostics(database: Path = DATABASE) -> dict[str, Any]:
         for symbol in SYMBOLS:
             rows = connection.execute(
                 """
-                SELECT session_day, bar_time, bid, ask, mid
+                SELECT session_day, bar_time, bid, ask, mid, request_time, quote_time
                 FROM samples
                 WHERE symbol = ? AND valid_bar = 1 AND valid_quote = 1
                 ORDER BY bar_time
@@ -614,6 +652,8 @@ def execution_diagnostics(database: Path = DATABASE) -> dict[str, Any]:
                 }
                 for row in rows
                 if None not in row[2:5]
+                and (age := _stored_quote_age(row[5], row[6])) is not None
+                and age >= 0
             }
             horizons: dict[str, Any] = {}
             for minutes in TCA_HORIZONS_MINUTES:
@@ -673,7 +713,8 @@ def record_once(
     lock_file: Path = LOCK_FILE,
 ) -> dict[str, Any]:
     _ensure_sandbox()
-    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    fixed_clock = now is not None
+    now = (now or _utc_now()).astimezone(timezone.utc)
     with _lock(lock_file):
         coverage = session_coverage(database)
         if coverage["qualified_session_count"] >= TARGET_SESSIONS:
@@ -687,10 +728,12 @@ def record_once(
             quotes = _snapshot_rows(api)
             if set(quotes) != set(SYMBOLS):
                 raise RuntimeError("Webull snapshot response omitted a forward-recording symbol")
+            received_at = now if fixed_clock else _utc_now()
             recorded = 0
             for symbol in SYMBOLS:
                 cursor = connection.execute(
-                    INSERT_SAMPLE, _record(symbol, bars[symbol], quotes[symbol], now)
+                    INSERT_SAMPLE,
+                    _record(symbol, bars[symbol], quotes[symbol], received_at),
                 )
                 recorded += cursor.rowcount
             connection.commit()
