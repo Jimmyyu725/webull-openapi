@@ -245,11 +245,39 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 .venv/bin/python webull_cli.py crypto-strategy run-once --yes
 ```
 
+## Sandbox 日内交易器
+
+日内模式使用已闭合的五分钟K线：EMA20高于EMA100且收盘价突破此前48根K线高点时买入；跌破EMA20、亏损2%、盈利5%或持仓满24小时后卖出。只做多，每次使用当前CRYPTO购买力的0.1%，全账户最多一个仓位，每个标的每天最多入场一次、全账户每天最多两次；当天两笔亏损后停止新开仓。暂停只阻止新开仓，不阻止退出。
+
+先生成90天回测。报告会明确显示零成本、每边0.25%和Webull每边1%成本下的结果；Sandbox运行属于学习实验，不代表策略通过盈利门槛：
+
+```bash
+.venv/bin/python webull_cli.py crypto-strategy daytrade-backtest --days 90
+```
+
+安装后会替换同一标签下原来的M120 LaunchAgent，并把原策略设为暂停；原状态和日志不会删除。由于当前Sandbox MQTT在TCP和WebSocket下均返回`101 Internal error`，日内模式使用已验证可用的HTTP接口：每5秒查询一次BTC/ETH快照，仅在新五分钟K线闭合后计算信号。频率低于官方Sandbox每个相关接口30次/60秒的限制。
+
+```bash
+.venv/bin/python webull_cli.py crypto-strategy daytrade-install --yes
+.venv/bin/python webull_cli.py crypto-strategy daytrade-status
+.venv/bin/python webull_cli.py crypto-strategy daytrade-pause
+.venv/bin/python webull_cli.py crypto-strategy daytrade-resume
+.venv/bin/python webull_cli.py crypto-strategy daytrade-report
+.venv/bin/python webull_cli.py crypto-strategy daytrade-uninstall --yes
+```
+
+手动执行一轮或在终端前台持续运行：
+
+```bash
+.venv/bin/python webull_cli.py crypto-strategy daytrade-run-once --yes
+.venv/bin/python webull_cli.py crypto-strategy daytrade-run --yes
+```
+
 ## 测试
 
 ```bash
 .venv/bin/python -m unittest -v
-.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py
+.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py
 ```
 
 已知环境差异：Webull Sandbox 的 `/trade/calendar` 当前返回 404；当前模拟账户的批量下单开关未开放；交易事件 gRPC 已连接成功，但 Sandbox MQTT 行情流本次在 TCP 和 WebSocket 下均返回 `101 Internal error`。这些能力仍完整保留在 CLI 中，服务端开关或状态恢复后无需改代码。若遇到 `429 TOO_MANY_REQUESTS`，等待接口限流窗口恢复后重试。

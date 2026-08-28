@@ -396,6 +396,71 @@ def cmd_supertrend_backtest(api: WebullAPI, args: argparse.Namespace) -> int:
     })
 
 
+def cmd_daytrade_backtest(api: WebullAPI, args: argparse.Namespace) -> int:
+    from daytrader_strategy import run_daytrader_backtest, save_report
+
+    report = run_daytrader_backtest(api, days=args.days)
+    json_path, markdown_path = save_report(report)
+    return emit({
+        "sandbox_symbols": report["sandbox_symbols"],
+        "json_report": str(json_path),
+        "markdown_report": str(markdown_path),
+    })
+
+
+def cmd_daytrade_run_once(api: WebullAPI, args: argparse.Namespace) -> int:
+    from daytrader_runtime import run_once
+
+    return emit(run_once(api, confirmed=args.yes))
+
+
+def cmd_daytrade_run(api: WebullAPI, args: argparse.Namespace) -> int:
+    from daytrader_runtime import run_forever
+
+    return emit(run_forever(api, confirmed=args.yes))
+
+
+def cmd_daytrade_status(_: WebullAPI, __: argparse.Namespace) -> int:
+    from daytrader_runtime import status
+
+    return emit(status())
+
+
+def cmd_daytrade_pause(_: WebullAPI, __: argparse.Namespace) -> int:
+    from daytrader_runtime import set_paused
+
+    return emit(set_paused(True))
+
+
+def cmd_daytrade_resume(_: WebullAPI, __: argparse.Namespace) -> int:
+    from daytrader_runtime import set_paused
+
+    return emit(set_paused(False))
+
+
+def cmd_daytrade_report(_: WebullAPI, __: argparse.Namespace) -> int:
+    from daytrader_runtime import runtime_report
+
+    return emit({"report": str(runtime_report())})
+
+
+def cmd_daytrade_install(_: WebullAPI, args: argparse.Namespace) -> int:
+    if not args.yes:
+        raise ValueError("Installing the Sandbox day trader requires --yes")
+    from daytrader_runtime import install_launch_agent
+
+    return emit({"launch_agent": str(install_launch_agent())})
+
+
+def cmd_daytrade_uninstall(_: WebullAPI, args: argparse.Namespace) -> int:
+    if not args.yes:
+        raise ValueError("Removing the Sandbox day trader requires --yes")
+    from daytrader_runtime import uninstall_launch_agent
+
+    uninstall_launch_agent()
+    return emit({"removed": True})
+
+
 def cmd_crypto_run_once(api: WebullAPI, args: argparse.Namespace) -> int:
     from crypto_runtime import run_once
 
@@ -627,6 +692,30 @@ def build_parser() -> argparse.ArgumentParser:
         "--source", choices=("both", "webull", "coinbase"), default="both"
     )
     supertrend_backtest.set_defaults(handler=cmd_supertrend_backtest)
+    daytrade_backtest = crypto_sub.add_parser("daytrade-backtest")
+    daytrade_backtest.add_argument("--days", type=int, default=90, choices=(90,))
+    daytrade_backtest.set_defaults(handler=cmd_daytrade_backtest)
+    daytrade_once = crypto_sub.add_parser("daytrade-run-once")
+    daytrade_once.add_argument("--yes", action="store_true")
+    daytrade_once.set_defaults(handler=cmd_daytrade_run_once)
+    daytrade_run = crypto_sub.add_parser("daytrade-run")
+    daytrade_run.add_argument("--yes", action="store_true")
+    daytrade_run.set_defaults(handler=cmd_daytrade_run)
+    for name, handler in (
+        ("daytrade-status", cmd_daytrade_status),
+        ("daytrade-pause", cmd_daytrade_pause),
+        ("daytrade-resume", cmd_daytrade_resume),
+        ("daytrade-report", cmd_daytrade_report),
+    ):
+        command = crypto_sub.add_parser(name)
+        command.set_defaults(handler=handler)
+    for name, handler in (
+        ("daytrade-install", cmd_daytrade_install),
+        ("daytrade-uninstall", cmd_daytrade_uninstall),
+    ):
+        command = crypto_sub.add_parser(name)
+        command.add_argument("--yes", action="store_true")
+        command.set_defaults(handler=handler)
     crypto_run = crypto_sub.add_parser("run-once")
     crypto_run.add_argument("--yes", action="store_true")
     crypto_run.set_defaults(handler=cmd_crypto_run_once)

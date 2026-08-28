@@ -21,6 +21,7 @@ from crypto_strategy import (
     signals,
     webull_bars,
 )
+from daytrader_strategy import backtest_daytrader, daytrade_signals
 from webull_api import is_mutating_call, redact_secrets
 from webull_cli import replace_account_placeholder
 from webull_orders import (
@@ -365,6 +366,36 @@ class CryptoStrategyTests(unittest.TestCase):
         self.assertEqual(quality.duplicates, 2)
         self.assertTrue(quality.passed)
 
+    def test_daytrader_breakout_uses_only_prior_bars(self):
+        bars = make_bars(102, interval_seconds=300)
+        bars[-1] = Bar(
+            bars[-1].time,
+            Decimal("100"),
+            Decimal("103"),
+            Decimal("99"),
+            Decimal("102"),
+        )
+        fast = [None] * 100 + [Decimal("101"), Decimal("101")]
+        slow = [None] * 100 + [Decimal("100"), Decimal("100")]
+        with mock.patch("daytrader_strategy.ema", side_effect=[fast, slow]):
+            result = daytrade_signals(bars)
+        self.assertEqual(result[-1], "BUY")
+
+    def test_daytrader_executes_next_open_and_applies_target_after_cost(self):
+        bars = make_bars(103, interval_seconds=300)
+        bars[101] = Bar(bars[101].time, Decimal("100"), Decimal("102"), Decimal("100"), Decimal("101"))
+        bars[102] = Bar(bars[102].time, Decimal("107"), Decimal("110"), Decimal("106"), Decimal("108"))
+        generated = ["HOLD"] * 103
+        generated[100] = "BUY"
+        with mock.patch("daytrader_strategy.daytrade_signals", return_value=generated):
+            result = backtest_daytrader(bars, cost_per_side=Decimal("0.01"))
+        trade = result["trades"][0]
+        self.assertEqual(trade["entry_time"], bars[101].time.isoformat())
+        self.assertEqual(trade["entry_price"], 101.0)
+        self.assertEqual(trade["exit_time"], bars[102].time.isoformat())
+        self.assertEqual(trade["exit_price"], 106.05)
+        self.assertEqual(trade["reason"], "target")
+
 
 class FakeResponse:
     def __init__(self, status_code, data=None):
@@ -580,6 +611,91 @@ class CryptoRuntimeTests(unittest.TestCase):
         with mock.patch("crypto_runtime.API_ENDPOINT", "api.webull.com"):
             with self.assertRaisesRegex(RuntimeError, "locked"):
                 ensure_sandbox()
+
+
+class DayTraderRuntimeTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        report = {
+            "sandbox_symbols": ["BTCUSD", "ETHUSD"],
+            "sources": {
+                "coinbase_m5_90d": {
+                    "symbols": {
+                        symbol: {"quality": {"passed": True}}
+                        for symbol in ("BTCUSD", "ETHUSD")
+                    }
+                }
+            },
+        }
+        self.patches = [
+            mock.patch("daytrader_runtime.STATE_DIR", root),
+            mock.patch("daytrader_runtime.STATE_FILE", root / "state.json"),
+            mock.patch("daytrader_runtime.LOG_FILE", root / "events.jsonl"),
+            mock.patch("daytrader_runtime.LOCK_FILE", root / "strategy.lock"),
+            mock.patch("daytrader_runtime.load_report", return_value=report),
+            mock.patch("daytrader_runtime._ensure_old_runner_paused"),
+        ]
+        for patcher in self.patches:
+            patcher.start()
+
+    def tearDown(self):
+        for patcher in reversed(self.patches):
+            patcher.stop()
+        self.temporary.cleanup()
+
+    def _closed_bars(self):
+        quality = DataQuality(576, 576, 1.0, 0, 300, True)
+        bars = make_bars(102, interval_seconds=300)
+        return {symbol: (bars, quality) for symbol in ("BTCUSD", "ETHUSD")}
+
+    def test_daytrader_allows_only_one_global_pending_entry(self):
+        from daytrader_runtime import run_once
+
+        api = FakeCryptoAPI()
+        signals = ["HOLD"] * 101 + ["BUY"]
+        with mock.patch("daytrader_runtime.webull_bars", return_value=self._closed_bars()), mock.patch(
+            "daytrader_runtime.daytrade_signals", return_value=signals
+        ):
+            run_once(api, confirmed=True, now=datetime(2026, 1, 20, tzinfo=timezone.utc))
+        self.assertEqual(len(api.place_calls), 1)
+        self.assertEqual(api.place_calls[0][1][0]["symbol"], "BTCUSD")
+
+    def test_daytrader_pause_blocks_new_entries(self):
+        from daytrader_runtime import initialize_state, run_once, write_state
+
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        state = initialize_state(now)
+        state["paused"] = True
+        write_state(state)
+        api = FakeCryptoAPI()
+        signals = ["HOLD"] * 101 + ["BUY"]
+        with mock.patch("daytrader_runtime.webull_bars", return_value=self._closed_bars()), mock.patch(
+            "daytrader_runtime.daytrade_signals", return_value=signals
+        ):
+            run_once(api, confirmed=True, now=now)
+        self.assertEqual(api.place_calls, [])
+
+    def test_daytrader_uncertain_order_halts_without_retry(self):
+        from daytrader_runtime import run_once
+
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        api = FakeCryptoAPI()
+
+        def uncertain_place(account_id, orders):
+            api.place_calls.append((account_id, orders))
+            raise TimeoutError("unknown outcome")
+
+        api.trade.order_v3.place_order = uncertain_place
+        signals = ["HOLD"] * 101 + ["BUY"]
+        with mock.patch("daytrader_runtime.webull_bars", return_value=self._closed_bars()), mock.patch(
+            "daytrader_runtime.daytrade_signals", return_value=signals
+        ):
+            with self.assertRaisesRegex(RuntimeError, "uncertain"):
+                run_once(api, confirmed=True, now=now)
+            result = run_once(api, confirmed=True, now=now + timedelta(seconds=5))
+        self.assertEqual(result["status"], "halted")
+        self.assertEqual(len(api.place_calls), 1)
 
 
 if __name__ == "__main__":

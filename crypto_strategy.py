@@ -324,8 +324,14 @@ def quantity_for_notional(
     return steps * lot_size
 
 
-def deterministic_order_id(symbol: str, candle_time: datetime, side: str) -> str:
-    raw = f"crypto-trend-v1:{symbol}:{candle_time.isoformat()}:{side.upper()}"
+def deterministic_order_id(
+    symbol: str,
+    candle_time: datetime,
+    side: str,
+    *,
+    strategy: str = "crypto-trend-v1",
+) -> str:
+    raw = f"{strategy}:{symbol}:{candle_time.isoformat()}:{side.upper()}"
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
