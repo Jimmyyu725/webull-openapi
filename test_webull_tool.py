@@ -1,6 +1,7 @@
 import json
 import signal
 import sqlite3
+import sys
 import tempfile
 import unittest
 import urllib.parse
@@ -107,6 +108,7 @@ from relative_value_strategy import (
     checkpoint_z_scores as pair_checkpoint_z_scores,
     trade_day as trade_pair_day,
 )
+from runtime_environment import base_python, ensure_runtime_venv
 from webull_api import is_mutating_call, redact_secrets
 from webull_cli import cmd_forward_record_once, replace_account_placeholder
 from webull_orders import (
@@ -2538,6 +2540,58 @@ class OpeningPressureStrategyTests(unittest.TestCase):
         self.assertTrue(bars.call_args.kwargs["require_cache"])
         self.assertFalse(report["holdout_requested"])
         self.assertEqual(report["decision"], "REJECT_BEFORE_HOLDOUT")
+
+
+class RuntimeEnvironmentTests(unittest.TestCase):
+    def test_base_python_comes_from_base_prefix(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = (
+                root
+                / "bin"
+                / f"python{sys.version_info.major}.{sys.version_info.minor}"
+            )
+            candidate.parent.mkdir()
+            candidate.touch()
+            with mock.patch("runtime_environment.sys.base_prefix", str(root)):
+                result = base_python()
+        self.assertEqual(result, candidate)
+
+    def test_misconfigured_runtime_venv_is_upgraded_from_base_python(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "venv"
+            python = target / "bin" / "python"
+            python.parent.mkdir(parents=True)
+            python.touch()
+            (target / "pyvenv.cfg").write_text(
+                "home = /project/.venv/bin\n", encoding="utf-8"
+            )
+            base = Path("/base/bin/python3.9")
+            with mock.patch("runtime_environment.base_python", return_value=base), mock.patch(
+                "runtime_environment.subprocess.run"
+            ) as run:
+                result = ensure_runtime_venv(target)
+
+        self.assertEqual(result, python)
+        run.assert_called_once_with(
+            [str(base), "-m", "venv", "--upgrade", str(target)], check=True
+        )
+
+    def test_matching_runtime_venv_is_left_untouched(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "venv"
+            python = target / "bin" / "python"
+            python.parent.mkdir(parents=True)
+            python.touch()
+            (target / "pyvenv.cfg").write_text("home = /base/bin\n", encoding="utf-8")
+            with mock.patch(
+                "runtime_environment.base_python",
+                return_value=Path("/base/bin/python3.9"),
+            ), mock.patch("runtime_environment.subprocess.run") as run:
+                result = ensure_runtime_venv(target)
+
+        self.assertEqual(result, python)
+        run.assert_not_called()
 
 
 class ExecutionAuthorizationTests(unittest.TestCase):

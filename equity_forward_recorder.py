@@ -8,7 +8,6 @@ import signal
 import shutil
 import sqlite3
 import subprocess
-import sys
 from contextlib import closing, contextmanager
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -19,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from config import API_ENDPOINT
 from crypto_strategy import parse_time
+from runtime_environment import ensure_runtime_venv
 from webull_api import WebullAPI, normalize_result
 
 
@@ -1471,6 +1471,7 @@ def _deploy_runtime() -> None:
         "webull_orders.py",
         "webull_streams.py",
         "requirements.txt",
+        "runtime_environment.py",
     ):
         shutil.copy2(ROOT / name, DEPLOY_DIR / name)
     deployed_reports = DEPLOY_DIR / "reports"
@@ -1483,13 +1484,11 @@ def _deploy_runtime() -> None:
         ROOT / "reports" / "sandbox-execution-authorization.json",
         deployed_reports / "sandbox-execution-authorization.json",
     )
-    python = DEPLOY_VENV / "bin" / "python"
-    if not python.exists():
-        subprocess.run([sys.executable, "-m", "venv", str(DEPLOY_VENV)], check=True)
-        subprocess.run(
-            [str(python), "-m", "pip", "install", "-q", "-r", str(DEPLOY_DIR / "requirements.txt")],
-            check=True,
-        )
+    python = ensure_runtime_venv(DEPLOY_VENV)
+    subprocess.run(
+        [str(python), "-m", "pip", "install", "-q", "-r", str(DEPLOY_DIR / "requirements.txt")],
+        check=True,
+    )
 
 
 def install_launch_agent() -> Path:

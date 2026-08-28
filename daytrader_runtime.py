@@ -6,7 +6,6 @@ import os
 import plistlib
 import shutil
 import subprocess
-import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -41,6 +40,7 @@ from daytrader_strategy import (
     load_report,
 )
 from execution_guard import authorization_status, authorize_automated_order
+from runtime_environment import ensure_runtime_venv
 from webull_api import WebullAPI, normalize_result, redact_secrets
 from webull_orders import build_order
 
@@ -578,6 +578,7 @@ def _deploy_runtime() -> None:
         "webull_orders.py",
         "webull_streams.py",
         "requirements.txt",
+        "runtime_environment.py",
     ):
         shutil.copy2(ROOT / name, DEPLOY_DIR / name)
     report_dir = DEPLOY_DIR / "reports"
@@ -592,9 +593,7 @@ def _deploy_runtime() -> None:
         source = ROOT / "reports" / name
         if source.exists():
             shutil.copy2(source, report_dir / name)
-    python = DEPLOY_VENV / "bin" / "python"
-    if not python.exists():
-        subprocess.run([sys.executable, "-m", "venv", str(DEPLOY_VENV)], check=True)
+    python = ensure_runtime_venv(DEPLOY_VENV)
     subprocess.run(
         [str(python), "-m", "pip", "install", "-q", "-r", str(DEPLOY_DIR / "requirements.txt")],
         check=True,
