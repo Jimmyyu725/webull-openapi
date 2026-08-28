@@ -1,16 +1,26 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from config import API_ENDPOINT
 
 
 AUTHORIZATION_FILE = Path(__file__).parent / "reports" / "sandbox-execution-authorization.json"
 SANDBOX_ENDPOINT = "api.sandbox.webull.com"
+NEW_YORK = ZoneInfo("America/New_York")
+PORTFOLIO_LIMIT_CEILINGS = {
+    "max_gross_exposure_fraction": Decimal("0.05"),
+    "max_single_position_fraction": Decimal("0.025"),
+    "max_trade_risk_fraction": Decimal("0.0005"),
+    "max_daily_loss_fraction": Decimal("0.0015"),
+    "max_rolling_five_day_loss_fraction": Decimal("0.004"),
+    "max_experiment_drawdown_fraction": Decimal("0.0075"),
+}
 
 
 def authorization_status(
@@ -31,6 +41,10 @@ def authorization_status(
         "max_quote_age_seconds": None,
         "max_bid_ask_spread_fraction": None,
         "max_order_to_displayed_ask_fraction": None,
+        **{name: None for name in PORTFOLIO_LIMIT_CEILINGS},
+        "max_position_count": None,
+        "max_daily_entries": None,
+        "mandatory_exit_time_et": None,
         "blocking_reasons": ["policy_unreadable"],
         "orders_enabled": False,
     }
@@ -70,16 +84,50 @@ def authorization_status(
     market_limits_valid = bool(
         max_quote_age_seconds is not None
         and max_quote_age_seconds.is_finite()
-        and Decimal("0") < max_quote_age_seconds <= Decimal("60")
+        and Decimal("0") < max_quote_age_seconds <= Decimal("5")
         and max_bid_ask_spread_fraction is not None
         and max_bid_ask_spread_fraction.is_finite()
-        and Decimal("0") < max_bid_ask_spread_fraction <= Decimal("0.05")
+        and Decimal("0") < max_bid_ask_spread_fraction <= Decimal("0.0005")
         and max_order_to_displayed_ask_fraction is not None
         and max_order_to_displayed_ask_fraction.is_finite()
         and Decimal("0") < max_order_to_displayed_ask_fraction <= Decimal("1")
     )
+    portfolio_limits: dict[str, Optional[Decimal]] = {}
+    for name, ceiling in PORTFOLIO_LIMIT_CEILINGS.items():
+        try:
+            value = Decimal(str(policy.get(name)))
+        except (ArithmeticError, ValueError):
+            value = None
+        portfolio_limits[name] = value
+        if value is None or not value.is_finite() or not Decimal("0") < value <= ceiling:
+            portfolio_limits[name] = None
+    max_position_count = policy.get("max_position_count")
+    max_daily_entries = policy.get("max_daily_entries")
+    mandatory_exit_time_et = policy.get("mandatory_exit_time_et")
+    try:
+        exit_time = time.fromisoformat(str(mandatory_exit_time_et))
+    except ValueError:
+        exit_time = None
+    portfolio_limits_valid = bool(
+        all(value is not None for value in portfolio_limits.values())
+        and not isinstance(max_position_count, bool)
+        and isinstance(max_position_count, int)
+        and 1 <= max_position_count <= 2
+        and not isinstance(max_daily_entries, bool)
+        and isinstance(max_daily_entries, int)
+        and 1 <= max_daily_entries <= 3
+        and exit_time is not None
+        and exit_time <= time(15, 55)
+        and max_order_notional_fraction is not None
+        and portfolio_limits["max_single_position_fraction"] is not None
+        and max_order_notional_fraction
+        <= portfolio_limits["max_single_position_fraction"]
+        and portfolio_limits["max_daily_loss_fraction"]
+        <= portfolio_limits["max_rolling_five_day_loss_fraction"]
+        <= portfolio_limits["max_experiment_drawdown_fraction"]
+    )
     structurally_valid = bool(
-        policy.get("version") == 3
+        policy.get("version") == 4
         and policy.get("environment") == SANDBOX_ENDPOINT
         and isinstance(strategies, list)
         and all(isinstance(item, str) and item for item in strategies)
@@ -87,6 +135,7 @@ def authorization_status(
         and all(isinstance(item, str) and item for item in symbols)
         and notional_limit_valid
         and market_limits_valid
+        and portfolio_limits_valid
     )
     expires_in_future = False
     if expires_at:
@@ -108,6 +157,7 @@ def authorization_status(
         "approved_symbol_present": bool(symbols),
         "order_notional_limit_present": notional_limit_valid,
         "market_quality_limits_present": market_limits_valid,
+        "portfolio_risk_limits_present": portfolio_limits_valid,
         "not_expired": expires_in_future,
     }
     blocking = [name for name, passed in checks.items() if not passed]
@@ -129,6 +179,15 @@ def authorization_status(
         ),
         "max_order_to_displayed_ask_fraction": (
             str(max_order_to_displayed_ask_fraction) if market_limits_valid else None
+        ),
+        **{
+            name: str(value) if portfolio_limits_valid and value is not None else None
+            for name, value in portfolio_limits.items()
+        },
+        "max_position_count": max_position_count if portfolio_limits_valid else None,
+        "max_daily_entries": max_daily_entries if portfolio_limits_valid else None,
+        "mandatory_exit_time_et": (
+            str(mandatory_exit_time_et) if portfolio_limits_valid else None
         ),
         "gate_checks": checks,
         "blocking_reasons": blocking,
@@ -154,6 +213,14 @@ def authorize_automated_order(
     current_best_ask: Optional[Decimal] = None,
     current_ask_size: Optional[Decimal] = None,
     quote_age_seconds: Optional[Decimal] = None,
+    account_net_liquidation_value: Optional[Decimal] = None,
+    current_gross_exposure: Optional[Decimal] = None,
+    current_position_count: Optional[int] = None,
+    order_risk_at_stop: Optional[Decimal] = None,
+    current_daily_loss: Optional[Decimal] = None,
+    current_rolling_five_day_loss: Optional[Decimal] = None,
+    current_experiment_drawdown: Optional[Decimal] = None,
+    current_daily_entry_count: Optional[int] = None,
 ) -> dict[str, Any]:
     normalized_side = side.upper()
     status = authorization_status(policy_file, now=now)
@@ -315,6 +382,68 @@ def authorize_automated_order(
         reasons.append("strategy_not_approved")
     if symbol not in status["approved_symbols"]:
         reasons.append("symbol_not_approved")
+    portfolio_values = (
+        account_net_liquidation_value,
+        current_gross_exposure,
+        order_risk_at_stop,
+        current_daily_loss,
+        current_rolling_five_day_loss,
+        current_experiment_drawdown,
+    )
+    portfolio_counts = (current_position_count, current_daily_entry_count)
+    if not (status.get("gate_checks") or {}).get("portfolio_risk_limits_present"):
+        reasons.append("portfolio_risk_limits_unavailable")
+    elif any(value is None for value in portfolio_values + portfolio_counts):
+        reasons.append("portfolio_risk_state_unverified")
+    elif (
+        any(not value.is_finite() for value in portfolio_values if value is not None)
+        or account_net_liquidation_value <= 0
+        or current_gross_exposure < 0
+        or order_risk_at_stop <= 0
+        or current_daily_loss < 0
+        or current_rolling_five_day_loss < 0
+        or current_experiment_drawdown < 0
+        or isinstance(current_position_count, bool)
+        or not isinstance(current_position_count, int)
+        or current_position_count < 0
+        or isinstance(current_daily_entry_count, bool)
+        or not isinstance(current_daily_entry_count, int)
+        or current_daily_entry_count < 0
+    ):
+        reasons.append("invalid_portfolio_risk_state")
+    else:
+        nlv = account_net_liquidation_value
+        if order_notional is not None:
+            if order_notional > nlv * Decimal(str(status["max_single_position_fraction"])):
+                reasons.append("single_position_limit_exceeded")
+            if (
+                current_gross_exposure + order_notional
+                > nlv * Decimal(str(status["max_gross_exposure_fraction"]))
+            ):
+                reasons.append("gross_exposure_limit_exceeded")
+        if current_position_count + 1 > int(status["max_position_count"]):
+            reasons.append("position_count_limit_exceeded")
+        if order_risk_at_stop > nlv * Decimal(str(status["max_trade_risk_fraction"])):
+            reasons.append("trade_risk_limit_exceeded")
+        if current_daily_loss >= nlv * Decimal(str(status["max_daily_loss_fraction"])):
+            reasons.append("daily_loss_limit_reached")
+        if current_rolling_five_day_loss >= nlv * Decimal(
+            str(status["max_rolling_five_day_loss_fraction"])
+        ):
+            reasons.append("rolling_five_day_loss_limit_reached")
+        if current_experiment_drawdown >= nlv * Decimal(
+            str(status["max_experiment_drawdown_fraction"])
+        ):
+            reasons.append("experiment_drawdown_limit_reached")
+        if current_daily_entry_count >= int(status["max_daily_entries"]):
+            reasons.append("daily_entry_limit_reached")
+    evaluation_time = now or datetime.now(timezone.utc)
+    if evaluation_time.tzinfo is None:
+        reasons.append("risk_clock_unverified")
+    elif status.get("mandatory_exit_time_et"):
+        cutoff = time.fromisoformat(str(status["mandatory_exit_time_et"]))
+        if evaluation_time.astimezone(NEW_YORK).time() >= cutoff:
+            reasons.append("mandatory_exit_window_reached")
     return {
         "authorized": not reasons,
         "mode": "SANDBOX_MICRO" if not reasons else "BLOCKED",

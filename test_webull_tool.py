@@ -2597,22 +2597,46 @@ class RuntimeEnvironmentTests(unittest.TestCase):
 class ExecutionAuthorizationTests(unittest.TestCase):
     def _policy(self, directory: str, **updates) -> Path:
         policy = {
-            "version": 3,
+            "version": 4,
             "environment": "api.sandbox.webull.com",
             "authorization_level": "SANDBOX_MICRO",
             "new_entries_enabled": True,
             "approved_strategy_ids": ["crypto-day-v2"],
             "approved_symbols": ["BTCUSD"],
             "max_order_notional_fraction": "0.005",
-            "max_quote_age_seconds": "15",
-            "max_bid_ask_spread_fraction": "0.0225",
+            "max_quote_age_seconds": "5",
+            "max_bid_ask_spread_fraction": "0.0005",
             "max_order_to_displayed_ask_fraction": "1",
+            "max_gross_exposure_fraction": "0.05",
+            "max_single_position_fraction": "0.025",
+            "max_position_count": 2,
+            "max_trade_risk_fraction": "0.0005",
+            "max_daily_loss_fraction": "0.0015",
+            "max_rolling_five_day_loss_fraction": "0.004",
+            "max_experiment_drawdown_fraction": "0.0075",
+            "max_daily_entries": 3,
+            "mandatory_exit_time_et": "15:55",
             "expires_at": "2026-02-01T00:00:00+00:00",
         }
         policy.update(updates)
         path = Path(directory) / "authorization.json"
         path.write_text(json.dumps(policy), encoding="utf-8")
         return path
+
+    @staticmethod
+    def _risk_state(**updates):
+        state = {
+            "account_net_liquidation_value": Decimal("1000000"),
+            "current_gross_exposure": Decimal("0"),
+            "current_position_count": 0,
+            "order_risk_at_stop": Decimal("500"),
+            "current_daily_loss": Decimal("0"),
+            "current_rolling_five_day_loss": Decimal("0"),
+            "current_experiment_drawdown": Decimal("0"),
+            "current_daily_entry_count": 0,
+        }
+        state.update(updates)
+        return state
 
     def test_repository_policy_blocks_new_risk(self):
         status = authorization_status(now=datetime(2026, 1, 20, tzinfo=timezone.utc))
@@ -2624,8 +2648,36 @@ class ExecutionAuthorizationTests(unittest.TestCase):
         )
         self.assertEqual(status["authorization_level"], "DATA_COLLECTION")
         self.assertTrue(status["gate_checks"]["market_quality_limits_present"])
+        self.assertTrue(status["gate_checks"]["portfolio_risk_limits_present"])
         self.assertFalse(status["new_entries_authorized"])
         self.assertFalse(decision["authorized"])
+
+    def test_incomplete_portfolio_policy_fails_closed(self):
+        now = datetime(2026, 1, 20, 19, 0, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            policy = self._policy(directory, max_daily_loss_fraction=None)
+            status = authorization_status(policy, now=now)
+            decision = authorize_automated_order(
+                "crypto-day-v2",
+                "BTCUSD",
+                "BUY",
+                policy_file=policy,
+                now=now,
+                current_position_quantity=Decimal("0"),
+                order_quantity=Decimal("1"),
+                current_open_order_count=0,
+                current_buying_power=Decimal("1000000"),
+                order_reference_price=Decimal("100"),
+                current_best_bid=Decimal("99.96"),
+                current_best_ask=Decimal("100"),
+                current_ask_size=Decimal("1000"),
+                quote_age_seconds=Decimal("1"),
+                **self._risk_state(),
+            )
+
+        self.assertFalse(status["readable"])
+        self.assertFalse(status["gate_checks"]["portfolio_risk_limits_present"])
+        self.assertIn("portfolio_risk_limits_unavailable", decision["blocking_reasons"])
 
     def test_missing_policy_fails_closed_for_entry_but_preserves_verified_exit(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -2780,16 +2832,17 @@ class ExecutionAuthorizationTests(unittest.TestCase):
         self.assertIn("invalid_new_risk_quantity", invalid["blocking_reasons"])
 
     def test_buy_enforces_policy_notional_cap_from_fresh_buying_power(self):
-        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        now = datetime(2026, 1, 20, 19, 0, tzinfo=timezone.utc)
         common = {
             "current_position_quantity": Decimal("0"),
             "current_open_order_count": 0,
             "current_buying_power": Decimal("1000000"),
             "order_reference_price": Decimal("100"),
-            "current_best_bid": Decimal("99"),
+            "current_best_bid": Decimal("99.96"),
             "current_best_ask": Decimal("100"),
             "current_ask_size": Decimal("1000"),
             "quote_age_seconds": Decimal("1"),
+            **self._risk_state(),
         }
         with tempfile.TemporaryDirectory() as directory:
             policy = self._policy(directory)
@@ -2842,7 +2895,7 @@ class ExecutionAuthorizationTests(unittest.TestCase):
         self.assertIn("invalid_capital_state", invalid["blocking_reasons"])
 
     def test_buy_requires_fresh_orderable_two_sided_market(self):
-        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        now = datetime(2026, 1, 20, 19, 0, tzinfo=timezone.utc)
         common = {
             "strategy_id": "crypto-day-v2",
             "symbol": "BTCUSD",
@@ -2853,17 +2906,18 @@ class ExecutionAuthorizationTests(unittest.TestCase):
             "current_open_order_count": 0,
             "current_buying_power": Decimal("1000000"),
             "order_reference_price": Decimal("100"),
-            "current_best_bid": Decimal("99"),
+            "current_best_bid": Decimal("99.96"),
             "current_best_ask": Decimal("100"),
             "current_ask_size": Decimal("1"),
-            "quote_age_seconds": Decimal("15"),
+            "quote_age_seconds": Decimal("5"),
+            **self._risk_state(),
         }
         with tempfile.TemporaryDirectory() as directory:
             policy = self._policy(directory)
             common["policy_file"] = policy
             valid = authorize_automated_order(**common)
             stale = authorize_automated_order(
-                **{**common, "quote_age_seconds": Decimal("15.0001")}
+                **{**common, "quote_age_seconds": Decimal("5.0001")}
             )
             future = authorize_automated_order(
                 **{**common, "quote_age_seconds": Decimal("-2.0001")}
@@ -2872,7 +2926,7 @@ class ExecutionAuthorizationTests(unittest.TestCase):
                 **{**common, "current_best_bid": Decimal("101")}
             )
             wide = authorize_automated_order(
-                **{**common, "current_best_bid": Decimal("97")}
+                **{**common, "current_best_bid": Decimal("99.90")}
             )
             thin = authorize_automated_order(
                 **{**common, "current_ask_size": Decimal("0.9999")}
@@ -2899,7 +2953,7 @@ class ExecutionAuthorizationTests(unittest.TestCase):
         self.assertIn("market_state_unverified", missing["blocking_reasons"])
 
     def test_unexpired_policy_limits_strategy_and_symbol(self):
-        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        now = datetime(2026, 1, 20, 19, 0, tzinfo=timezone.utc)
         with tempfile.TemporaryDirectory() as directory:
             policy = self._policy(directory)
             approved = authorize_automated_order(
@@ -2913,10 +2967,11 @@ class ExecutionAuthorizationTests(unittest.TestCase):
                 current_open_order_count=0,
                 current_buying_power=Decimal("1000000"),
                 order_reference_price=Decimal("100"),
-                current_best_bid=Decimal("99"),
+                current_best_bid=Decimal("99.96"),
                 current_best_ask=Decimal("100"),
                 current_ask_size=Decimal("1000"),
                 quote_age_seconds=Decimal("1"),
+                **self._risk_state(),
             )
             wrong_strategy = authorize_automated_order(
                 "crypto-ema-ha-v1", "BTCUSD", "BUY", policy_file=policy, now=now
@@ -2927,6 +2982,84 @@ class ExecutionAuthorizationTests(unittest.TestCase):
         self.assertTrue(approved["authorized"])
         self.assertIn("strategy_not_approved", wrong_strategy["blocking_reasons"])
         self.assertIn("symbol_not_approved", wrong_symbol["blocking_reasons"])
+
+    def test_buy_enforces_portfolio_loss_and_session_limits(self):
+        now = datetime(2026, 1, 20, 19, 0, tzinfo=timezone.utc)
+        common = {
+            "strategy_id": "crypto-day-v2",
+            "symbol": "BTCUSD",
+            "side": "BUY",
+            "now": now,
+            "current_position_quantity": Decimal("0"),
+            "order_quantity": Decimal("50"),
+            "current_open_order_count": 0,
+            "current_buying_power": Decimal("1000000"),
+            "order_reference_price": Decimal("100"),
+            "current_best_bid": Decimal("99.96"),
+            "current_best_ask": Decimal("100"),
+            "current_ask_size": Decimal("1000"),
+            "quote_age_seconds": Decimal("1"),
+        }
+        boundary = self._risk_state(
+            current_gross_exposure=Decimal("45000"),
+            current_position_count=1,
+            current_daily_loss=Decimal("1499.99"),
+            current_rolling_five_day_loss=Decimal("3999.99"),
+            current_experiment_drawdown=Decimal("7499.99"),
+            current_daily_entry_count=2,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            common["policy_file"] = self._policy(directory)
+            valid = authorize_automated_order(**common, **boundary)
+            missing = authorize_automated_order(**common)
+            invalid = authorize_automated_order(
+                **common,
+                **self._risk_state(account_net_liquidation_value=Decimal("NaN")),
+            )
+            single = authorize_automated_order(
+                **{**common, "order_quantity": Decimal("250.0001")},
+                **self._risk_state(),
+            )
+            gross = authorize_automated_order(
+                **common, **self._risk_state(current_gross_exposure=Decimal("45000.01"))
+            )
+            positions = authorize_automated_order(
+                **common, **self._risk_state(current_position_count=2)
+            )
+            trade_risk = authorize_automated_order(
+                **common, **self._risk_state(order_risk_at_stop=Decimal("500.01"))
+            )
+            daily = authorize_automated_order(
+                **common, **self._risk_state(current_daily_loss=Decimal("1500"))
+            )
+            rolling = authorize_automated_order(
+                **common,
+                **self._risk_state(current_rolling_five_day_loss=Decimal("4000")),
+            )
+            drawdown = authorize_automated_order(
+                **common,
+                **self._risk_state(current_experiment_drawdown=Decimal("7500")),
+            )
+            entries = authorize_automated_order(
+                **common, **self._risk_state(current_daily_entry_count=3)
+            )
+            cutoff = authorize_automated_order(
+                **{**common, "now": datetime(2026, 1, 20, 20, 55, tzinfo=timezone.utc)},
+                **self._risk_state(),
+            )
+
+        self.assertTrue(valid["authorized"])
+        self.assertIn("portfolio_risk_state_unverified", missing["blocking_reasons"])
+        self.assertIn("invalid_portfolio_risk_state", invalid["blocking_reasons"])
+        self.assertIn("single_position_limit_exceeded", single["blocking_reasons"])
+        self.assertIn("gross_exposure_limit_exceeded", gross["blocking_reasons"])
+        self.assertIn("position_count_limit_exceeded", positions["blocking_reasons"])
+        self.assertIn("trade_risk_limit_exceeded", trade_risk["blocking_reasons"])
+        self.assertIn("daily_loss_limit_reached", daily["blocking_reasons"])
+        self.assertIn("rolling_five_day_loss_limit_reached", rolling["blocking_reasons"])
+        self.assertIn("experiment_drawdown_limit_reached", drawdown["blocking_reasons"])
+        self.assertIn("daily_entry_limit_reached", entries["blocking_reasons"])
+        self.assertIn("mandatory_exit_window_reached", cutoff["blocking_reasons"])
 
     def test_production_endpoint_blocks_risk_reduction_too(self):
         with tempfile.TemporaryDirectory() as directory:

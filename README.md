@@ -385,7 +385,7 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 
 `desk-status`是只读的开盘前风险核对：同时汇总股票和加密账户的仓位、未完成订单、旧自动任务、前向数据Gate、TCA进度及当前自动交易授权。任何不是由未来股票策略建立的现有仓位都会列为未托管标的，自动策略不得触碰。
 
-自动运行器还受`reports/sandbox-execution-authorization.json`的共享机器闸门约束。当前`DATA_COLLECTION`授权会在任何订单状态写入或网络提交前拒绝自动`BUY`；只有未来明确进入未过期的`SANDBOX_MICRO`授权、且策略与标的均在批准清单内时才能开仓。Sandbox的`SELL`仅保留为现有多头仓位的降险通道。手动CLI仍要求调用者显式传入`--yes`，不属于自动策略授权。
+自动运行器还受`reports/sandbox-execution-authorization.json`的共享机器闸门约束。当前`DATA_COLLECTION`授权会在任何订单状态写入或网络提交前拒绝自动`BUY`；只有未来明确进入未过期的`SANDBOX_MICRO`授权、策略与标的均在批准清单内，并由执行器提供可验证的账户净值、组合敞口、止损风险、日/五日损失、实验回撤及入场次数时才能开仓。任何指标缺失或触及授权书上限都会失败关闭；美东15:55后不允许新增风险。Sandbox的`SELL`仅保留为现有多头仓位的降险通道。手动CLI仍要求调用者显式传入`--yes`，不属于自动策略授权。
 
 `research-ledger-status`汇总全部历史策略尝试、已经消费的保留样本和当前研究预算。账本冻结在`reports/research-attempt-ledger.json`，人类可读审计见`reports/research-attempt-ledger.md`；失败规格不会从统计中删除。
 
