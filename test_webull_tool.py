@@ -899,6 +899,49 @@ class EquityForwardRecorderTests(unittest.TestCase):
             self.assertEqual(
                 initial["sessions"][0]["capture_protocol_consistency"], "PASS"
             )
+            self.assertEqual(
+                initial["sessions"][0]["cross_symbol_capture_sync"], "PASS"
+            )
+            self.assertEqual(
+                initial["sessions"][0]["maximum_cross_symbol_capture_skew_seconds"],
+                0.0,
+            )
+            self.assertEqual(initial["max_cross_symbol_capture_skew_seconds"], 0.0)
+
+            skewed_time = (
+                datetime.fromisoformat(timestamps[100])
+                + timedelta(minutes=1, milliseconds=500)
+            ).isoformat()
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "UPDATE samples SET request_time = ? "
+                    "WHERE symbol = 'AAPL' AND bar_time = ?",
+                    (skewed_time, timestamps[100]),
+                )
+            skewed_capture = equity_session_coverage(database)["sessions"][0]
+            self.assertTrue(skewed_capture["complete"])
+            self.assertFalse(skewed_capture["qualified"])
+            self.assertEqual(skewed_capture["cross_symbol_capture_sync"], "FAIL")
+            self.assertEqual(
+                skewed_capture["maximum_cross_symbol_capture_skew_seconds"], 0.5
+            )
+            self.assertEqual(
+                skewed_capture["session_quality_failures"],
+                ["cross_symbol_capture_sync"],
+            )
+
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "UPDATE samples SET request_time = ? "
+                    "WHERE symbol = 'AAPL' AND bar_time = ?",
+                    (
+                        (
+                            datetime.fromisoformat(timestamps[100])
+                            + timedelta(minutes=1)
+                        ).isoformat(),
+                        timestamps[100],
+                    ),
+                )
 
             with sqlite3.connect(database) as connection:
                 connection.execute(

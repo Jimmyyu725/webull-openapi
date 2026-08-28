@@ -38,6 +38,7 @@ MAX_CONSECUTIVE_INTERNAL_GAP_MINUTES = 1
 TCA_HORIZONS_MINUTES = (1, 5, 30)
 TCA_OPERATIONAL_BUFFER_BPS = 2.0
 MAX_P95_BAR_CLOSE_LAG_SECONDS = 30.0
+MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS = 0.0
 CAPTURE_PROTOCOL_VERSION = "2026-08-29-response-time-v1"
 LEGACY_CAPTURE_PROTOCOL_VERSION = "LEGACY_UNVERSIONED"
 
@@ -263,6 +264,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         "mandatory_anchor_minutes": MANDATORY_ANCHOR_MINUTES,
         "max_consecutive_internal_gap_minutes": MAX_CONSECUTIVE_INTERNAL_GAP_MINUTES,
         "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
+        "max_cross_symbol_capture_skew_seconds": MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS,
         "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
         "complete_session_count": 0,
         "qualified_session_count": 0,
@@ -317,6 +319,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                     "valid_bar": set(),
                     "valid_quote": set(),
                     "bar_close_lags": {},
+                    "request_times": {},
                     "quote_ages": {},
                     "spreads": {},
                     "capture_protocol_versions": set(),
@@ -334,6 +337,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         values["bar_close_lags"][timestamp] = (
             request_timestamp - timestamp - timedelta(minutes=1)
         ).total_seconds()
+        values["request_times"][timestamp] = request_timestamp
         if valid_bar:
             values["valid_bar"].add(timestamp)
         if quote_age_seconds is not None:
@@ -435,6 +439,26 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                     value.astimezone(EASTERN).strftime("%H:%M") for value in missing[:10]
                 ],
             }
+        cross_symbol_capture_skews = []
+        for timestamp in aligned:
+            capture_times = [
+                grouped[session_day][symbol]["request_times"][timestamp]
+                for symbol in SYMBOLS
+            ]
+            cross_symbol_capture_skews.append(
+                (max(capture_times) - min(capture_times)).total_seconds()
+            )
+        maximum_cross_symbol_capture_skew = (
+            max(cross_symbol_capture_skews) if cross_symbol_capture_skews else None
+        )
+        p95_cross_symbol_capture_skew = _percentile(
+            cross_symbol_capture_skews, 0.95
+        )
+        capture_sync_passed = (
+            maximum_cross_symbol_capture_skew is not None
+            and maximum_cross_symbol_capture_skew
+            <= MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS
+        )
         aligned_missing = sorted(expected - aligned)
         internal_missing: list[datetime] = []
         maximum_internal_gap = 0
@@ -470,6 +494,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
             "capture_protocol_consistent": (
                 session_capture_protocol_versions == {CAPTURE_PROTOCOL_VERSION}
             ),
+            "cross_symbol_capture_sync": capture_sync_passed,
             "opening_anchor_complete": not opening_anchor_missing,
             "closing_anchor_complete": not closing_anchor_missing,
             "maximum_consecutive_internal_gap": (
@@ -503,6 +528,15 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                 if session_capture_protocol_versions == {CAPTURE_PROTOCOL_VERSION}
                 else "FAIL"
             ),
+            "cross_symbol_capture_sync": (
+                "PASS" if capture_sync_passed else "FAIL"
+            ),
+            "maximum_cross_symbol_capture_skew_seconds": (
+                round(maximum_cross_symbol_capture_skew, 6)
+                if maximum_cross_symbol_capture_skew is not None
+                else None
+            ),
+            "p95_cross_symbol_capture_skew_seconds": p95_cross_symbol_capture_skew,
             "opening_anchor": "PASS" if not opening_anchor_missing else "FAIL",
             "opening_anchor_missing_minutes": len(opening_anchor_missing),
             "opening_anchor_missing_examples_et": [
@@ -585,6 +619,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
             "target_qualified_sessions": TARGET_SESSIONS,
             "target_complete_sessions": TARGET_SESSIONS,
             "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
+            "max_cross_symbol_capture_skew_seconds": MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS,
             "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
             "database": str(database),
             "installed": LAUNCH_PLIST.exists(),
@@ -692,6 +727,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
         "target_qualified_sessions": TARGET_SESSIONS,
         "target_complete_sessions": TARGET_SESSIONS,
         "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
+        "max_cross_symbol_capture_skew_seconds": MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS,
         "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
         "database": str(database),
         "installed": LAUNCH_PLIST.exists(),
