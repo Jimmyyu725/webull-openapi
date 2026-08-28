@@ -389,7 +389,7 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 
 `research-ledger-status`汇总全部历史策略尝试、已经消费的保留样本和当前研究预算。账本冻结在`reports/research-attempt-ledger.json`，人类可读审计见`reports/research-attempt-ledger.md`；失败规格不会从统计中删除。
 
-`desk-journal-record`把当前只读desk状态追加到本地JSONL审计日志；同一个美东交易日的盘前、常规时段、盘后或休市阶段各最多一条，重复运行在读取任何账户接口前即返回现有记录。已安装的`forward-record-once`每分钟任务会同时触发这项幂等记录，因此无需第二个LaunchAgent；阶段划分复用冻结的NYSE休市和提前收盘日历。`desk-journal-status`检查日志完整性并汇总时段和授权状态；日志损坏时拒绝继续追加。文件保存在`~/Library/Application Support/WebullEquityForward/desk-journal.jsonl`，不提交Git。
+`desk-journal-record`把当前只读desk状态追加到本地JSONL审计日志；同一个美东交易日的盘前、常规时段、盘后或休市阶段各最多一条，重复运行在读取任何账户接口前即返回现有记录。已安装的`forward-record-once`每分钟任务会同时触发这项幂等记录，因此无需第二个LaunchAgent；阶段划分复用冻结的NYSE休市和提前收盘日历。`desk-journal-status`检查日志完整性并汇总时段和授权状态；自2026-08-31起，每个计划交易日必须同时具备盘前与盘后快照，提前收盘按13:00 ET加2分钟宽限计算，休市日不要求这两个阶段。缺失任何必需阶段或日志损坏都返回`BLOCKED`。文件保存在`~/Library/Application Support/WebullEquityForward/desk-journal.jsonl`，不提交Git。
 
 ## 测试
 

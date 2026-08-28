@@ -3,7 +3,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -24,6 +24,9 @@ ACCOUNT_CLASSES = ("INDIVIDUAL_MARGIN", "CRYPTO")
 RESEARCH_LEDGER = Path(__file__).parent / "reports" / "research-attempt-ledger.json"
 DESK_JOURNAL = APP_DIR / "desk-journal.jsonl"
 DESK_JOURNAL_LOCK = APP_DIR / "desk-journal.lock"
+DESK_JOURNAL_REQUIRED_FROM = date(2026, 8, 31)
+DESK_JOURNAL_PRE_OPEN_DUE = time(8, 25)
+DESK_JOURNAL_POST_CLOSE_GRACE_MINUTES = 2
 EASTERN = ZoneInfo("America/New_York")
 CRYPTO_STATE_FILE = (
     Path.home()
@@ -320,20 +323,56 @@ def _journal_records(journal: Path) -> tuple[list[dict[str, Any]], list[int]]:
     return records, invalid_lines
 
 
-def desk_journal_status(journal: Path = DESK_JOURNAL) -> dict[str, Any]:
+def desk_journal_status(
+    journal: Path = DESK_JOURNAL,
+    *,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
     records, invalid_lines = _journal_records(journal)
+    now = (now or datetime.now(timezone.utc)).astimezone(EASTERN)
     phases: dict[str, int] = {}
     authorizations: dict[str, int] = {}
+    phases_by_day: dict[str, set[str]] = {}
     for record in records:
         phase = str(record.get("phase"))
         phases[phase] = phases.get(phase, 0) + 1
+        phases_by_day.setdefault(str(record.get("session_day")), set()).add(phase)
         authorization = str((record.get("desk") or {}).get("authorization_level"))
         authorizations[authorization] = authorizations.get(authorization, 0) + 1
+    session_checks = []
+    day = DESK_JOURNAL_REQUIRED_FROM
+    while day <= now.date():
+        session_type, scheduled_close = _session_schedule(day)
+        expected = []
+        if session_type in {"FULL", "EARLY_CLOSE"}:
+            if day < now.date() or now.time() >= DESK_JOURNAL_PRE_OPEN_DUE:
+                expected.append("pre_open")
+            close = datetime.combine(day, scheduled_close, tzinfo=EASTERN)
+            close += timedelta(minutes=DESK_JOURNAL_POST_CLOSE_GRACE_MINUTES)
+            if now >= close:
+                expected.append("post_close")
+        if expected:
+            observed = phases_by_day.get(day.isoformat(), set())
+            missing = [phase for phase in expected if phase not in observed]
+            session_checks.append({
+                "session_day": day.isoformat(),
+                "session_type": session_type,
+                "required_phases": expected,
+                "missing_phases": missing,
+            })
+        day += timedelta(days=1)
+    missing_sessions = [item for item in session_checks if item["missing_phases"]]
     last = records[-1] if records else {}
     return {
         "readable": not invalid_lines,
         "decision": (
-            "BLOCKED" if invalid_lines else ("AUDIT_OK" if records else "NOT_STARTED")
+            "BLOCKED"
+            if invalid_lines or missing_sessions
+            else (
+                "AUDIT_OK"
+                if session_checks
+                else ("AUDIT_ARMED" if records else "NOT_STARTED")
+            )
         ),
         "journal": str(journal),
         "entry_count": len(records),
@@ -341,6 +380,12 @@ def desk_journal_status(journal: Path = DESK_JOURNAL) -> dict[str, Any]:
         "phase_counts": dict(sorted(phases.items())),
         "authorization_counts": dict(sorted(authorizations.items())),
         "invalid_lines": invalid_lines,
+        "required_from": DESK_JOURNAL_REQUIRED_FROM.isoformat(),
+        "required_phases": ["pre_open", "post_close"],
+        "post_close_grace_minutes": DESK_JOURNAL_POST_CLOSE_GRACE_MINUTES,
+        "checked_session_count": len(session_checks),
+        "compliant_session_count": len(session_checks) - len(missing_sessions),
+        "missing_required_phase_sessions": missing_sessions,
         "last_recorded_at": last.get("recorded_at"),
         "last_record_key": last.get("record_key"),
         "orders_enabled": False,

@@ -1640,6 +1640,52 @@ class EquityDeskTests(unittest.TestCase):
         self.assertEqual(result["decision"], "BLOCKED")
         self.assertEqual(result["invalid_lines"], [1])
 
+    def test_desk_journal_blocks_missing_early_close_phases(self):
+        def record(phase):
+            return {
+                "record_key": f"2026-11-27:{phase}",
+                "recorded_at": "2026-11-27T18:03:00+00:00",
+                "session_day": "2026-11-27",
+                "phase": phase,
+                "desk": {
+                    "authorization_level": "DATA_COLLECTION",
+                    "orders_enabled": False,
+                },
+            }
+
+        now = datetime(2026, 11, 27, 18, 3, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "equity_desk.DESK_JOURNAL_REQUIRED_FROM", date(2026, 11, 27)
+        ):
+            journal = Path(directory) / "desk.jsonl"
+            journal.write_text(
+                json.dumps(record("pre_open")) + "\n", encoding="utf-8"
+            )
+            incomplete = desk_journal_status(journal, now=now)
+            with journal.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record("post_close")) + "\n")
+            complete = desk_journal_status(journal, now=now)
+
+        self.assertEqual(incomplete["decision"], "BLOCKED")
+        self.assertEqual(incomplete["checked_session_count"], 1)
+        self.assertEqual(
+            incomplete["missing_required_phase_sessions"][0]["missing_phases"],
+            ["post_close"],
+        )
+        self.assertEqual(complete["decision"], "AUDIT_OK")
+        self.assertEqual(complete["compliant_session_count"], 1)
+
+    def test_desk_journal_does_not_require_closed_holiday(self):
+        now = datetime(2026, 9, 7, 21, 0, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "equity_desk.DESK_JOURNAL_REQUIRED_FROM", date(2026, 9, 7)
+        ):
+            result = desk_journal_status(Path(directory) / "missing.jsonl", now=now)
+
+        self.assertEqual(result["decision"], "NOT_STARTED")
+        self.assertEqual(result["checked_session_count"], 0)
+        self.assertEqual(result["missing_required_phase_sessions"], [])
+
 
 class EquityOrbStrategyTests(unittest.TestCase):
     def _session(self, day: date, opening_volume: int, *, bars: int = 78) -> Session:
