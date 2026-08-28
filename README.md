@@ -348,11 +348,21 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 
 开发期结论为`REJECT_BEFORE_HOLDOUT`。Webull前复权日线在固定窗口中有一个跨标的日期缺口，并有多根`low <= open/close <= high`关系不成立的历史K线；其中异常直接影响调仓开盘价。预注册规定数据质量失败必须立即停止，因此程序不计算这些脏数据上的策略收益，也没有请求2015年后的保留样本、启动影子观察或提交Sandbox订单。
 
+## 中期行业ETF月度动量研究
+
+经典行业动量因历史`open`字段质量失败后，下一项独立候选改用文献中的中期收益窗口：每月按形成前12至7个月收益选出九只经典行业ETF中的前三名，明确跳过最近126个交易日。策略只使用通过质量检查的收盘价，总账户敞口固定30%，并与相同敞口的SPY及行业等权组合比较。规则、两阶段隔离、成本和放行条件在计算绩效前冻结于`reports/intermediate-sector-momentum-preregistration.md`。
+
+```bash
+.venv/bin/python webull_cli.py equity-strategy intermediate-sector-momentum-backtest
+```
+
+开发期结论为`REJECT_BEFORE_HOLDOUT`。2000-02-01至2014-12-31的4006个共同交易日通过收盘价质量Gate；基准成本下策略账户收益40.70%，略低于行业等权的40.79%。相对等权的信息比率仅0.01，配对日超额收益t统计量仅0.03，Sharpe为0.41。程序因此没有请求2015年后的保留样本，没有启动影子观察，也没有提交Sandbox订单。可审计结果见`reports/intermediate-sector-momentum-stage-gate.md`和自包含HTML报告。
+
 ## 测试
 
 ```bash
 .venv/bin/python -m unittest -v
-.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py relative_value_strategy.py opening_pressure_strategy.py opening_momentum_strategy.py classic_sector_momentum.py
+.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py relative_value_strategy.py opening_pressure_strategy.py opening_momentum_strategy.py classic_sector_momentum.py intermediate_sector_momentum.py
 ```
 
 已知环境差异：Webull Sandbox 的 `/trade/calendar` 当前返回 404；当前模拟账户的批量下单开关未开放；交易事件 gRPC 已连接成功，但 Sandbox MQTT 行情流本次在 TCP 和 WebSocket 下均返回 `101 Internal error`。这些能力仍完整保留在 CLI 中，服务端开关或状态恢复后无需改代码。若遇到 `429 TOO_MANY_REQUESTS`，等待接口限流窗口恢复后重试。

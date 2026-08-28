@@ -1,0 +1,375 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Webull股票Sandbox 中期行业动量分阶段验证",
+    "description": "预注册的中期行业动量开发阶段审计报告。",
+    "generatedAt": "2026-08-28T15:05:38Z",
+    "cards": [
+      {
+        "id": "base_return",
+        "description": "基准成本下，中期动量对100万美元初始账户的累计收益。",
+        "dataset": "summary",
+        "sourceId": "stage_gate_result",
+        "metrics": [
+          {
+            "label": "中期动量账户收益",
+            "field": "base_return",
+            "format": "percent"
+          }
+        ]
+      },
+      {
+        "id": "relative_return",
+        "description": "中期动量账户收益减去相同30%敞口的行业等权账户收益。",
+        "dataset": "summary",
+        "sourceId": "stage_gate_result",
+        "metrics": [
+          {
+            "label": "相对行业等权",
+            "field": "relative_return",
+            "format": "percent",
+            "signed": true
+          }
+        ]
+      },
+      {
+        "id": "information_ratio",
+        "description": "基准成本策略相对行业等权的年化信息比率。",
+        "dataset": "summary",
+        "sourceId": "stage_gate_result",
+        "metrics": [
+          {
+            "label": "信息比率",
+            "field": "information_ratio",
+            "format": "number"
+          }
+        ]
+      },
+      {
+        "id": "t_stat",
+        "description": "配对日超额收益均值的t统计量。",
+        "dataset": "summary",
+        "sourceId": "stage_gate_result",
+        "metrics": [
+          {
+            "label": "超额收益 t 值",
+            "field": "t_stat",
+            "format": "number"
+          }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "return_comparison",
+        "title": "开发期账户收益比较",
+        "subtitle": "2000-02-01至2014-12-31；所有组合均为30%账户敞口，柱形从零开始。",
+        "type": "bar",
+        "dataset": "portfolio_comparison",
+        "sourceId": "stage_gate_result",
+        "valueFormat": "percent",
+        "encodings": {
+          "x": {
+            "field": "portfolio",
+            "type": "nominal",
+            "label": "组合"
+          },
+          "y": {
+            "field": "account_return",
+            "type": "quantitative",
+            "label": "账户收益",
+            "format": "percent"
+          },
+          "tooltip": [
+            {
+              "field": "net_profit",
+              "type": "quantitative",
+              "label": "净收益",
+              "format": "currency"
+            },
+            {
+              "field": "cagr",
+              "type": "quantitative",
+              "label": "CAGR",
+              "format": "percent"
+            },
+            {
+              "field": "sharpe",
+              "type": "quantitative",
+              "label": "Sharpe",
+              "format": "number"
+            },
+            {
+              "field": "max_drawdown",
+              "type": "quantitative",
+              "label": "最大回撤",
+              "format": "percent"
+            },
+            {
+              "field": "transaction_cost",
+              "type": "quantitative",
+              "label": "交易成本",
+              "format": "currency"
+            }
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "gate_checks",
+        "title": "开发阶段Gate明细",
+        "subtitle": "所有预注册条件必须同时通过，才允许请求2015年后的保留样本。",
+        "dataset": "gate_checks",
+        "sourceId": "stage_gate_result",
+        "defaultSort": {
+          "field": "order",
+          "direction": "asc"
+        },
+        "columns": [
+          {
+            "field": "order",
+            "label": "#",
+            "type": "number"
+          },
+          {
+            "field": "criterion",
+            "label": "Gate条件",
+            "type": "text"
+          },
+          {
+            "field": "status",
+            "label": "结果",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "stage_gate_result",
+        "label": "中期行业动量阶段Gate结果",
+        "path": "reports/intermediate-sector-momentum-stage-gate.json"
+      },
+      {
+        "id": "preregistration",
+        "label": "中期行业动量预注册规则",
+        "path": "reports/intermediate-sector-momentum-preregistration.md"
+      },
+      {
+        "id": "webull_bars",
+        "label": "Webull日线Bars接口文档",
+        "href": "https://developer.webull.com/apis/docs/reference/broker-market-data-api/bars-using-get/"
+      },
+      {
+        "id": "novy_marx",
+        "label": "Novy-Marx 2012中期动量论文",
+        "href": "https://doi.org/10.1016/j.jfineco.2011.05.003"
+      },
+      {
+        "id": "industry_momentum",
+        "label": "Moskowitz与Grinblatt行业动量论文",
+        "href": "https://onlinelibrary.wiley.com/doi/abs/10.1111/0022-1082.00146"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# Webull股票Sandbox 中期行业动量分阶段验证"
+      },
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "sourceId": "stage_gate_result",
+        "body": "## 技术摘要\n\n结论为 **REJECT_BEFORE_HOLDOUT**。开发数据质量通过，但基准成本策略仅赚 **40.70%**，略低于相同30%敞口的行业等权组合 **40.79%**。相对等权的信息比率为 **0.01**，配对日超额收益t值为 **0.03**；没有证据表明复杂选股规则创造了可重复优势。程序没有请求2015年后的保留样本，也没有产生Sandbox订单。"
+      },
+      {
+        "id": "metrics",
+        "type": "metric-strip",
+        "cardIds": [
+          "base_return",
+          "relative_return",
+          "information_ratio",
+          "t_stat"
+        ]
+      },
+      {
+        "id": "comparison_chart",
+        "type": "chart",
+        "chartId": "return_comparison",
+        "layout": "full"
+      },
+      {
+        "id": "findings",
+        "type": "markdown",
+        "sourceId": "stage_gate_result",
+        "body": "## 核心发现\n\n- 零成本、基准成本和压力成本下策略均为正收益，说明信号不是完全无效。\n- 但基准成本净收益 **$406,983.55**，比行业等权少 **$913.23**；CAGR同样略低。\n- Sharpe只有 **0.41**，未达到0.75；11个年份为正，但只有7个年份跑赢等权。\n- 成本侵蚀零成本利润的 **14.48%**，策略的低超额不足以补偿复杂度和执行风险。"
+      },
+      {
+        "id": "gate_table",
+        "type": "table",
+        "tableId": "gate_checks",
+        "layout": "full"
+      },
+      {
+        "id": "scope",
+        "type": "markdown",
+        "sourceId": "preregistration",
+        "body": "## 范围、数据与定义\n\n固定九只1998年已存在的Select Sector SPDR，SPY仅作基准。开发期为2000-02-01至2014-12-31，初始账户100万美元、总股票敞口30%、其余现金收益记为零。Webull日线为前复权数据；预注册明确忽略已知不可靠的`open`字段，只验证并使用`high`、`low`和`close`。"
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "sourceId": "preregistration",
+        "body": "## 方法\n\n每月第一个共同交易日，以该日之前的收盘数据计算形成前12至7个月收益，跳过最近126个交易日，选前三名。每只赢家占账户10%，按整股调仓。信号不读取调仓日或未来收盘；调仓日收盘只作为15:55至16:00市场单的执行代理。结果同时计入零成本、基准成本和压力成本，并与30% SPY及30%行业等权比较。所有门槛在绩效计算前冻结。"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## 局限与稳健性\n\n日线收盘无法精确重建15:55至16:00的成交价；ETF历史成分和前复权处理也不能消除全部数据偏差。开发样本曾用于其他行业策略，只能承担开发筛选，不能冒充样本外证据。由于开发Gate已失败，继续查看保留样本只会增加研究者自由度，因此保持封存。"
+      },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "body": "## 建议的下一步\n\n维持 **NO_TRADE**。不要修改这套策略参数后重跑同一窗口；把它记录为失败实验。下一候选必须来自独立经济机制，并先预注册再读取新的数据。即使将来有策略通过开发与保留Gate，也只能先运行一个完整月的无下单影子盘，量化真实可执行价与收盘代理之间的误差。"
+      },
+      {
+        "id": "questions",
+        "type": "markdown",
+        "body": "## 仍需回答的问题\n\n1. 哪类独立信号能在严格成本后稳定跑赢简单行业等权？\n2. 15:55可执行价相对正式收盘的误差是否小于压力成本预算？\n3. Sandbox报价、限流和订单状态是否足以支持稳定的盘中风控？"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-28T15:05:38Z",
+    "status": "ready",
+    "datasets": {
+      "summary": [
+        {
+          "base_return": 0.40698355,
+          "equal_weight_return": 0.40789677,
+          "relative_return": -0.00091322,
+          "information_ratio": 0.007058,
+          "t_stat": 0.027238,
+          "common_sessions": 4006,
+          "positive_years": 11,
+          "positive_excess_years": 7,
+          "cost_erosion": 0.14484048
+        }
+      ],
+      "portfolio_comparison": [
+        {
+          "portfolio": "中期动量 零成本",
+          "account_return": 0.47591535,
+          "net_profit": 475915.354523,
+          "cagr": 0.02644683,
+          "sharpe": 0.465926,
+          "max_drawdown": 0.16283155,
+          "transaction_cost": 0.0
+        },
+        {
+          "portfolio": "中期动量 基准成本",
+          "account_return": 0.40698355,
+          "net_profit": 406983.54798188,
+          "cagr": 0.02316001,
+          "sharpe": 0.412324,
+          "max_drawdown": 0.16602651,
+          "transaction_cost": 50055.79054612
+        },
+        {
+          "portfolio": "中期动量 压力成本",
+          "account_return": 0.33676623,
+          "net_profit": 336766.22721735,
+          "cagr": 0.01965366,
+          "sharpe": 0.354836,
+          "max_drawdown": 0.16939663,
+          "transaction_cost": 100976.60665465
+        },
+        {
+          "portfolio": "30% SPY",
+          "account_return": 0.27647453,
+          "net_profit": 276474.53207747,
+          "cagr": 0.01650302,
+          "sharpe": 0.318359,
+          "max_drawdown": 0.19307403,
+          "transaction_cost": 277.25411553
+        },
+        {
+          "portfolio": "30% 行业等权",
+          "account_return": 0.40789677,
+          "net_profit": 407896.77349335,
+          "cagr": 0.02320453,
+          "sharpe": 0.436433,
+          "max_drawdown": 0.19309194,
+          "transaction_cost": 4023.86223865
+        }
+      ],
+      "gate_checks": [
+        { "order": 1, "criterion": "数据质量", "status": "通过" },
+        { "order": 2, "criterion": "零成本净收益为正", "status": "通过" },
+        { "order": 3, "criterion": "基准成本净收益为正", "status": "通过" },
+        { "order": 4, "criterion": "压力成本净收益为正", "status": "通过" },
+        { "order": 5, "criterion": "净收益跑赢30% SPY", "status": "通过" },
+        { "order": 6, "criterion": "净收益跑赢行业等权", "status": "失败" },
+        { "order": 7, "criterion": "CAGR跑赢30% SPY", "status": "通过" },
+        { "order": 8, "criterion": "CAGR跑赢行业等权", "status": "失败" },
+        { "order": 9, "criterion": "Sharpe至少0.75", "status": "失败" },
+        { "order": 10, "criterion": "信息比率至少0.50", "status": "失败" },
+        { "order": 11, "criterion": "超额收益t值至少1.65", "status": "失败" },
+        { "order": 12, "criterion": "至少10个正收益年份", "status": "通过" },
+        { "order": 13, "criterion": "至少8年跑赢行业等权", "status": "失败" },
+        { "order": 14, "criterion": "回撤不高于两项基准", "status": "通过" },
+        { "order": 15, "criterion": "最差单日不低于-3%", "status": "通过" },
+        { "order": 16, "criterion": "至少覆盖6个行业", "status": "通过" },
+        { "order": 17, "criterion": "单行业席位不超过35%", "status": "通过" },
+        { "order": 18, "criterion": "成本侵蚀不超过25%", "status": "通过" }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "stage_gate_result",
+      "label": "中期行业动量阶段Gate结果",
+      "path": "reports/intermediate-sector-momentum-stage-gate.json",
+      "query": {
+        "engine": "sqlite-json1",
+        "language": "sql",
+        "sql": "WITH report(payload) AS (SELECT json(:report_json)), portfolios(portfolio, json_path) AS (VALUES ('中期动量 零成本', '$.development.strategy.zero'), ('中期动量 基准成本', '$.development.strategy.base'), ('中期动量 压力成本', '$.development.strategy.stress'), ('30% SPY', '$.development.benchmarks.spy'), ('30% 行业等权', '$.development.benchmarks.equal_weight')), portfolio_rows AS (SELECT 'portfolio_comparison' AS dataset, portfolio AS item, CAST(json_extract(payload, json_path || '.account_return') AS REAL) AS primary_value, CAST(json_extract(payload, json_path || '.net_profit') AS REAL) AS net_profit, CAST(json_extract(payload, json_path || '.cagr') AS REAL) AS cagr, CAST(json_extract(payload, json_path || '.annualized_sharpe') AS REAL) AS sharpe, CAST(json_extract(payload, json_path || '.max_drawdown') AS REAL) AS max_drawdown, CAST(json_extract(payload, json_path || '.transaction_cost') AS REAL) AS transaction_cost, NULL AS status FROM report CROSS JOIN portfolios), summary_row AS (SELECT 'summary' AS dataset, 'base_vs_equal' AS item, CAST(json_extract(payload, '$.development.strategy.base.account_return') AS REAL) AS primary_value, CAST(json_extract(payload, '$.development.benchmarks.equal_weight.account_return') AS REAL) AS net_profit, CAST(json_extract(payload, '$.development.strategy.base.excess_equal_weight.annualized_information_ratio') AS REAL) AS cagr, CAST(json_extract(payload, '$.development.strategy.base.excess_equal_weight.t_stat') AS REAL) AS sharpe, CAST(json_extract(payload, '$.development.gate.cost_erosion') AS REAL) AS max_drawdown, NULL AS transaction_cost, json_extract(payload, '$.decision') AS status FROM report), gate_rows AS (SELECT 'gate_checks' AS dataset, gate.key AS item, CAST(gate.value AS REAL) AS primary_value, NULL AS net_profit, NULL AS cagr, NULL AS sharpe, NULL AS max_drawdown, NULL AS transaction_cost, CASE CAST(gate.value AS INTEGER) WHEN 1 THEN '通过' ELSE '失败' END AS status FROM report, json_each(json_extract(payload, '$.development.gate.checks')) AS gate) SELECT * FROM portfolio_rows UNION ALL SELECT * FROM summary_row UNION ALL SELECT * FROM gate_rows",
+        "description": "以阶段Gate JSON作为绑定参数，提取组合比较、摘要与Gate明细，再整形成报告中的三个已复核数据集。",
+        "executed_at": "2026-08-28T15:05:38Z",
+        "tables_used": [
+          "bound JSON document: reports/intermediate-sector-momentum-stage-gate.json"
+        ],
+        "filters": [
+          "Development performance window: 2000-02-01 through 2014-12-31",
+          "Only close-valid common sessions; open field excluded by preregistration",
+          "Holdout data not requested because the development gate failed"
+        ]
+      }
+    },
+    {
+      "id": "preregistration",
+      "label": "中期行业动量预注册规则",
+      "path": "reports/intermediate-sector-momentum-preregistration.md"
+    },
+    {
+      "id": "webull_bars",
+      "label": "Webull日线Bars接口文档",
+      "href": "https://developer.webull.com/apis/docs/reference/broker-market-data-api/bars-using-get/"
+    },
+    {
+      "id": "novy_marx",
+      "label": "Novy-Marx 2012中期动量论文",
+      "href": "https://doi.org/10.1016/j.jfineco.2011.05.003"
+    },
+    {
+      "id": "industry_momentum",
+      "label": "Moskowitz与Grinblatt行业动量论文",
+      "href": "https://onlinelibrary.wiley.com/doi/abs/10.1111/0022-1082.00146"
+    }
+  ]
+}

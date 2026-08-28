@@ -54,6 +54,12 @@ from intraday_momentum_strategy import (
     backtest as backtest_intraday_momentum,
     observations as intraday_momentum_observations,
 )
+from intermediate_sector_momentum import (
+    DEVELOPMENT_FETCH_END as INTERMEDIATE_DEVELOPMENT_FETCH_END,
+    _aligned_close as align_intermediate_close,
+    run_intermediate_sector_momentum,
+    simulate as simulate_intermediate_sector_momentum,
+)
 from noise_area_strategy import (
     DIVIDENDS as NOISE_DIVIDENDS,
     checkpoints as noise_checkpoints,
@@ -990,6 +996,104 @@ class ClassicSectorMomentumTests(unittest.TestCase):
         self.assertIsNone(stage["strategy"])
         self.assertIsNone(stage["benchmarks"])
         simulation.assert_not_called()
+
+
+class IntermediateSectorMomentumTests(unittest.TestCase):
+    def _bars(self) -> dict[str, list[Bar]]:
+        start = datetime(2019, 1, 1, tzinfo=timezone.utc)
+        output = {symbol: [] for symbol in CLASSIC_SECTOR_SYMBOLS}
+        intermediate = {"XLB": Decimal("120"), "XLE": Decimal("119"), "XLF": Decimal("118")}
+        for index in range(260):
+            timestamp = start + timedelta(days=index)
+            for symbol in CLASSIC_SECTOR_SYMBOLS:
+                close = intermediate.get(symbol, Decimal("100")) if index == 126 else Decimal("100")
+                if symbol == "XLY" and index == 252:
+                    close = Decimal("1000")
+                if symbol == "XLB" and index == 253:
+                    close = Decimal("123")
+                output[symbol].append(Bar(
+                    timestamp,
+                    close,
+                    close,
+                    close,
+                    close,
+                    Decimal("1000"),
+                ))
+        return output
+
+    def test_intermediate_signal_skips_recent_returns_and_executes_at_close(self):
+        bars = self._bars()
+        result = simulate_intermediate_sector_momentum(
+            bars,
+            start_day=bars["SPY"][253].time.date(),
+            end_day=bars["SPY"][254].time.date(),
+            mode="momentum",
+            cost_model=CLASSIC_ZERO_COST,
+        )
+        self.assertEqual(result["selections"][0]["winners"], ["XLB", "XLE", "XLF"])
+        xlb_buy = next(
+            item for item in result["orders"]
+            if item["symbol"] == "XLB" and item["quantity_delta"] > 0
+        )
+        self.assertEqual(xlb_buy["close_proxy"], 123.0)
+
+    def test_close_quality_ignores_open_but_rejects_invalid_close(self):
+        bars = self._bars()
+        xly = bars["XLY"][252]
+        bars["XLY"][252] = Bar(
+            xly.time,
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            xly.volume,
+        )
+        original = bars["XLB"][10]
+        bars["XLB"][10] = Bar(
+            original.time,
+            Decimal("999"),
+            Decimal("101"),
+            Decimal("99"),
+            Decimal("100"),
+            original.volume,
+        )
+        _, quality = align_intermediate_close(
+            bars,
+            quality_start=bars["SPY"][0].time.date(),
+            minimum_sessions=250,
+        )
+        self.assertTrue(quality["passed"])
+        bars["XLB"][10] = Bar(
+            original.time,
+            Decimal("999"),
+            Decimal("101"),
+            Decimal("99"),
+            Decimal("200"),
+            original.volume,
+        )
+        _, quality = align_intermediate_close(
+            bars,
+            quality_start=bars["SPY"][0].time.date(),
+            minimum_sessions=250,
+        )
+        self.assertFalse(quality["passed"])
+        self.assertEqual(quality["invalid_close"], [f"XLB:{original.time.date().isoformat()}"])
+
+    def test_failed_development_gate_preserves_intermediate_holdout(self):
+        with (
+            mock.patch("intermediate_sector_momentum.webull_stock_bars", return_value={}) as bars,
+            mock.patch("intermediate_sector_momentum._stage", return_value={}),
+            mock.patch(
+                "intermediate_sector_momentum._gate",
+                return_value={"passed": False, "checks": {}},
+            ),
+        ):
+            report = run_intermediate_sector_momentum(mock.Mock())
+        self.assertEqual(bars.call_count, 1)
+        self.assertTrue(bars.call_args.kwargs["require_cache"])
+        self.assertEqual(bars.call_args.kwargs["now"], INTERMEDIATE_DEVELOPMENT_FETCH_END)
+        self.assertFalse(report["holdout_requested"])
+        self.assertEqual(report["decision"], "REJECT_BEFORE_HOLDOUT")
 
 
 class OpeningPressureStrategyTests(unittest.TestCase):
