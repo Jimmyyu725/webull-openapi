@@ -675,7 +675,16 @@ class EquityForwardRecorderTests(unittest.TestCase):
                 )
             current = equity_forward_status(database)
             coverage = equity_session_coverage(database)
-            diagnostics = equity_execution_diagnostics(database)
+            with mock.patch(
+                "equity_forward_recorder.status",
+                return_value={
+                    "decision": "PENDING",
+                    "complete_session_count": 1,
+                    "qualified_session_count": 1,
+                    "qualified_sessions": [start.date().isoformat()],
+                },
+            ):
+                diagnostics = equity_execution_diagnostics(database)
 
         self.assertTrue(all(
             item["negative_quote_age_count"] == 2
@@ -906,7 +915,23 @@ class EquityForwardRecorderTests(unittest.TestCase):
                 record_equity_forward_once(
                     self._api(now), now=now, database=database, lock_file=lock
                 )
-            diagnostics = equity_execution_diagnostics(database)
+            unqualified = equity_execution_diagnostics(database)
+            with mock.patch(
+                "equity_forward_recorder.status",
+                return_value={
+                    "decision": "PENDING",
+                    "complete_session_count": 1,
+                    "qualified_session_count": 1,
+                    "qualified_sessions": [start.date().isoformat()],
+                },
+            ):
+                diagnostics = equity_execution_diagnostics(database)
+        self.assertTrue(all(
+            metrics["paired_observations"] == 0
+            for item in unqualified["symbols"].values()
+            for metrics in item["horizons"].values()
+        ))
+        self.assertEqual(unqualified["sample_scope"], "QUALIFIED_SESSIONS_ONLY")
         spy = diagnostics["symbols"]["SPY"]["horizons"]
         self.assertEqual(spy["1"]["paired_observations"], 1)
         self.assertEqual(spy["5"]["paired_observations"], 1)
@@ -917,6 +942,7 @@ class EquityForwardRecorderTests(unittest.TestCase):
             round(spy["1"]["p95_round_trip_quoted_cost_bps"] + 2.0, 6),
         )
         self.assertLess(spy["1"]["median_long_executable_return_bps"], 0)
+        self.assertEqual(diagnostics["qualified_sessions"], [start.date().isoformat()])
         self.assertEqual(diagnostics["interpretation"], "EXECUTION_DIAGNOSTIC_ONLY")
         self.assertFalse(diagnostics["orders_enabled"])
 

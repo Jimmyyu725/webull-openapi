@@ -612,10 +612,13 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
 def execution_diagnostics(database: Path = DATABASE) -> dict[str, Any]:
     """Estimate top-of-book cost hurdles without creating signals or orders."""
     recorder = status(database)
+    qualified_sessions = set(recorder.get("qualified_sessions", []))
     output: dict[str, Any] = {
         "status": "ready" if recorder["decision"] == "DATA_USABLE" else "collecting",
         "decision": recorder["decision"],
         "interpretation": "EXECUTION_DIAGNOSTIC_ONLY",
+        "sample_scope": "QUALIFIED_SESSIONS_ONLY",
+        "qualified_sessions": sorted(qualified_sessions),
         "complete_session_count": recorder.get("complete_session_count", 0),
         "qualified_session_count": recorder.get("qualified_session_count", 0),
         "target_qualified_sessions": TARGET_SESSIONS,
@@ -651,7 +654,8 @@ def execution_diagnostics(database: Path = DATABASE) -> dict[str, Any]:
                     "mid": Decimal(str(row[4])),
                 }
                 for row in rows
-                if None not in row[2:5]
+                if row[0] in qualified_sessions
+                and None not in row[2:5]
                 and (age := _stored_quote_age(row[5], row[6])) is not None
                 and age >= 0
             }
