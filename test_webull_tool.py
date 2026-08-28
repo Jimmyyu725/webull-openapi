@@ -56,6 +56,7 @@ from equity_forward_recorder import (
     record_once as record_equity_forward_once,
     status as equity_forward_status,
 )
+from equity_desk import desk_status as equity_desk_status
 from intraday_momentum_strategy import (
     Observation,
     _execute as execute_intraday_momentum,
@@ -612,6 +613,115 @@ class EquityForwardRecorderTests(unittest.TestCase):
         self.assertLess(spy["1"]["median_long_executable_return_bps"], 0)
         self.assertEqual(diagnostics["interpretation"], "EXECUTION_DIAGNOSTIC_ONLY")
         self.assertFalse(diagnostics["orders_enabled"])
+
+
+class EquityDeskTests(unittest.TestCase):
+    @staticmethod
+    def _response(data, status=200):
+        return SimpleNamespace(status_code=status, json=lambda: data)
+
+    def _api(self):
+        accounts = [
+            {
+                "account_id": "margin-id",
+                "account_number": "DEA7TE64",
+                "account_class": "INDIVIDUAL_MARGIN",
+            },
+            {
+                "account_id": "crypto-id",
+                "account_number": "DEA7TE86",
+                "account_class": "CRYPTO",
+            },
+        ]
+        balances = {
+            "margin-id": {
+                "total_net_liquidation_value": "1000010",
+                "total_market_value": "320",
+                "account_currency_assets": [{"day_buying_power": "3999000"}],
+            },
+            "crypto-id": {
+                "total_net_liquidation_value": "0",
+                "total_market_value": "0",
+                "account_currency_assets": [{"buying_power": "1000000"}],
+            },
+        }
+        positions = {
+            "margin-id": [{
+                "symbol": "AAPL",
+                "instrument_type": "EQUITY",
+                "quantity": "1",
+                "cost_price": "310.52",
+                "market_value": "320",
+                "unrealized_profit_loss": "9.48",
+            }],
+            "crypto-id": [],
+        }
+        account_v2 = SimpleNamespace(
+            get_account_balance=mock.Mock(
+                side_effect=lambda account_id: self._response(balances[account_id])
+            ),
+            get_account_position=mock.Mock(
+                side_effect=lambda account_id: self._response(positions[account_id])
+            ),
+        )
+        order_v3 = SimpleNamespace(
+            get_order_open=mock.Mock(side_effect=lambda *_args, **_kwargs: self._response([]))
+        )
+        return SimpleNamespace(
+            accounts=mock.Mock(return_value=accounts),
+            trade=SimpleNamespace(account_v2=account_v2, order_v3=order_v3),
+        )
+
+    def test_desk_status_blocks_unmanaged_position_and_remains_read_only(self):
+        api = self._api()
+        crypto = {
+            "status": "running",
+            "state": {"paused": True, "pending_orders": {}, "submitted_order_ids": []},
+            "launch_agent": {"installed": True},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            result = equity_desk_status(
+                api,
+                database=Path(directory) / "missing.sqlite3",
+                crypto_automation=crypto,
+            )
+        authorization = result["automatic_equity_trading"]
+        self.assertEqual(result["authorization_level"], "DATA_COLLECTION")
+        self.assertEqual(authorization["status"], "BLOCKED")
+        self.assertIn("forward_data_pending", authorization["reasons"])
+        self.assertIn("unmanaged_equity_positions", authorization["reasons"])
+        self.assertEqual(authorization["blocked_symbols"], ["AAPL"])
+        self.assertTrue(result["legacy_crypto_automation"]["paused"])
+        self.assertFalse(result["orders_enabled"])
+        self.assertEqual(api.trade.account_v2.get_account_position.call_count, 2)
+        self.assertEqual(api.trade.order_v3.get_order_open.call_count, 2)
+
+    def test_desk_status_fails_closed_when_account_read_raises(self):
+        api = self._api()
+        api.trade.account_v2.get_account_balance.side_effect = RuntimeError("unavailable")
+        with tempfile.TemporaryDirectory() as directory:
+            result = equity_desk_status(
+                api,
+                database=Path(directory) / "missing.sqlite3",
+                crypto_automation={
+                    "state_readable": False,
+                    "launch_agent": {"installed": True},
+                },
+            )
+        self.assertIn(
+            "account_state_unreadable", result["automatic_equity_trading"]["reasons"]
+        )
+        self.assertIn(
+            "legacy_crypto_state_unreadable",
+            result["automatic_equity_trading"]["reasons"],
+        )
+        self.assertTrue(all(not account["readable"] for account in result["accounts"]))
+
+    def test_desk_source_has_no_mutating_order_calls(self):
+        source = (Path(__file__).parent / "equity_desk.py").read_text(encoding="utf-8")
+        self.assertNotIn("place_order", source)
+        self.assertNotIn("cancel_order", source)
+        self.assertNotIn("replace_order", source)
 
 
 class EquityOrbStrategyTests(unittest.TestCase):

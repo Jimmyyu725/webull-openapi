@@ -476,6 +476,7 @@ def _deploy_runtime() -> None:
     for name in (
         "config.py",
         "crypto_strategy.py",
+        "equity_desk.py",
         "equity_forward_recorder.py",
         "webull_api.py",
         "webull_cli.py",
