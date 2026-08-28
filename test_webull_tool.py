@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 import urllib.parse
@@ -56,7 +57,11 @@ from equity_forward_recorder import (
     record_once as record_equity_forward_once,
     status as equity_forward_status,
 )
-from equity_desk import desk_status as equity_desk_status
+from equity_desk import (
+    RESEARCH_LEDGER,
+    desk_status as equity_desk_status,
+    research_status as equity_research_status,
+)
 from intraday_momentum_strategy import (
     Observation,
     _execute as execute_intraday_momentum,
@@ -722,6 +727,27 @@ class EquityDeskTests(unittest.TestCase):
         self.assertNotIn("place_order", source)
         self.assertNotIn("cancel_order", source)
         self.assertNotIn("replace_order", source)
+
+    def test_research_ledger_counts_every_attempt_and_report(self):
+        result = equity_research_status()
+        self.assertTrue(result["readable"])
+        self.assertEqual(result["attempt_count"], 12)
+        self.assertEqual(result["strategy_family_count"], 9)
+        self.assertEqual(result["deployable_count"], 0)
+        self.assertEqual(result["consumed_holdout_count"], 7)
+        self.assertEqual(result["non_independent_count"], 2)
+        self.assertEqual(result["unrequested_holdout_count"], 3)
+        self.assertEqual(result["next_candidate_budget"], 1)
+        self.assertFalse(result["parameter_search_allowed"])
+        ledger = json.loads(RESEARCH_LEDGER.read_text(encoding="utf-8"))
+        root = Path(__file__).parent
+        self.assertTrue(all((root / item["report"]).exists() for item in ledger["attempts"]))
+
+    def test_research_ledger_fails_closed_when_missing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = equity_research_status(Path(directory) / "missing.json")
+        self.assertFalse(result["readable"])
+        self.assertEqual(result["decision"], "BLOCKED")
 
 
 class EquityOrbStrategyTests(unittest.TestCase):

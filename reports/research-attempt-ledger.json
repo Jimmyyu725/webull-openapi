@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "frozen_at": "2026-08-29",
+  "policy": {
+    "next_candidate_budget": 1,
+    "parameter_search_allowed": false,
+    "current_forward_data_is_execution_only": true,
+    "shadow_sessions_required": 20,
+    "shadow_candidate_orders_required": 100
+  },
+  "attempts": [
+    {
+      "id": "crypto_ema_ha_m120",
+      "family": "crypto_ema_ha",
+      "asset_class": "CRYPTO",
+      "outcome": "LEGACY_GATE_ONLY",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "NOT_INDEPENDENT",
+      "primary_failure": "仅通过早期宽松Gate；没有独立样本外，1.5%每边压力成本为负，M5诊断严重亏损",
+      "report": "reports/crypto-backtest-90d.md"
+    },
+    {
+      "id": "crypto_supertrend_atr10x3",
+      "family": "crypto_supertrend",
+      "asset_class": "CRYPTO",
+      "outcome": "NO_TRADE_DIAGNOSTIC",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "NOT_INDEPENDENT",
+      "primary_failure": "Webull基准成本下亏损；0.25%成本已大致落后买入持有",
+      "report": "reports/supertrend-backtest-90d.md"
+    },
+    {
+      "id": "crypto_m5_trend_breakout",
+      "family": "crypto_m5_breakout",
+      "asset_class": "CRYPTO",
+      "outcome": "NO_TRADE",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "CONSUMED",
+      "primary_failure": "BTC与ETH样本外、成本压力、基准超额及时间稳定性全部失败",
+      "report": "reports/daytrader-backtest-90d.md"
+    },
+    {
+      "id": "equity_orb_m5",
+      "family": "equity_orb",
+      "asset_class": "EQUITY",
+      "outcome": "NO_TRADE",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "CONSUMED",
+      "primary_failure": "最终样本外为负、落后QQQ、利润因子与压力成本失败",
+      "report": "reports/equity-orb-backtest-90d.md"
+    },
+    {
+      "id": "equity_orb_m1_holdout",
+      "family": "equity_orb",
+      "asset_class": "EQUITY",
+      "outcome": "NO_TRADE",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "CONSUMED",
+      "primary_failure": "独立M1窗口仍亏损，胜率与利润因子接近零，数据Gate也失败",
+      "report": "reports/equity-orb-m1-holdout-90d.md"
+    },
+    {
+      "id": "equity_closing_half_hour_momentum",
+      "family": "equity_closing_momentum",
+      "asset_class": "EQUITY",
+      "outcome": "NO_TRADE",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "CONSUMED",
+      "primary_failure": "SPY与QQQ成本后期望、Sharpe、基准超额与时间稳定性失败",
+      "report": "reports/intraday-momentum-1y.md"
+    },
+    {
+      "id": "equity_noise_area_vwap",
+      "family": "equity_noise_area",
+      "asset_class": "EQUITY",
+      "outcome": "NO_TRADE",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "CONSUMED",
+      "primary_failure": "利润因子、Sharpe、显著性、时间稳定性及双向一致性失败",
+      "report": "reports/noise-area-m5-1y.md"
+    },
+    {
+      "id": "equity_spy_ivv_relative_value",
+      "family": "equity_relative_value",
+      "asset_class": "EQUITY",
+      "outcome": "NO_TRADE",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "CONSUMED",
+      "primary_failure": "仅零成本为正，基础和压力成本、期望值及时间稳定性失败",
+      "report": "reports/spy-ivv-relative-value-m5-1y.md"
+    },
+    {
+      "id": "equity_opening_pressure_reversal",
+      "family": "equity_opening_pressure",
+      "asset_class": "EQUITY",
+      "outcome": "NO_TRADE",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "CONSUMED",
+      "primary_failure": "零成本即亏损，数据、期望、稳定性、回撤和行业广度失败",
+      "report": "reports/opening-pressure-reversal-m5-1y.md"
+    },
+    {
+      "id": "equity_opening_pressure_momentum",
+      "family": "equity_opening_pressure",
+      "asset_class": "EQUITY",
+      "outcome": "REJECT_BEFORE_HOLDOUT",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "NOT_REQUESTED",
+      "primary_failure": "复用已污染开发样本；基础成本、压力成本、期望和稳定性失败",
+      "report": "reports/opening-pressure-momentum-stage-gate.md"
+    },
+    {
+      "id": "equity_classic_sector_momentum",
+      "family": "equity_sector_momentum",
+      "asset_class": "EQUITY",
+      "outcome": "REJECT_BEFORE_HOLDOUT",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "NOT_REQUESTED",
+      "primary_failure": "开发数据日期集合与早期复权OHLC质量Gate失败",
+      "report": "reports/classic-sector-momentum-stage-gate.md"
+    },
+    {
+      "id": "equity_intermediate_sector_momentum",
+      "family": "equity_sector_momentum",
+      "asset_class": "EQUITY",
+      "outcome": "REJECT_BEFORE_HOLDOUT",
+      "deployable_under_current_mandate": false,
+      "holdout_state": "NOT_REQUESTED",
+      "primary_failure": "成本后略低于行业等权，Sharpe、信息比率、显著性和年度超额失败",
+      "report": "reports/intermediate-sector-momentum-stage-gate.md"
+    }
+  ]
+}

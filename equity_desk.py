@@ -10,6 +10,7 @@ from webull_api import WebullAPI, normalize_result
 
 
 ACCOUNT_CLASSES = ("INDIVIDUAL_MARGIN", "CRYPTO")
+RESEARCH_LEDGER = Path(__file__).parent / "reports" / "research-attempt-ledger.json"
 CRYPTO_STATE_FILE = (
     Path.home()
     / "Library"
@@ -98,6 +99,64 @@ def _crypto_automation_status() -> dict[str, Any]:
     }
 
 
+def research_status(ledger: Path = RESEARCH_LEDGER) -> dict[str, Any]:
+    try:
+        data = json.loads(ledger.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "readable": False,
+            "decision": "BLOCKED",
+            "ledger": str(ledger),
+            "attempt_count": 0,
+            "deployable_count": 0,
+        }
+    attempts = data.get("attempts")
+    policy = data.get("policy")
+    identifiers = [item.get("id") for item in attempts] if isinstance(attempts, list) else []
+    readable = bool(
+        data.get("version") == 1
+        and isinstance(attempts, list)
+        and isinstance(policy, dict)
+        and all(isinstance(item, dict) and item.get("id") for item in attempts)
+        and len(identifiers) == len(set(identifiers))
+    )
+    if not readable:
+        return {
+            "readable": False,
+            "decision": "BLOCKED",
+            "ledger": str(ledger),
+            "attempt_count": len(attempts) if isinstance(attempts, list) else 0,
+            "deployable_count": 0,
+        }
+    outcomes: dict[str, int] = {}
+    for item in attempts:
+        outcome = str(item.get("outcome"))
+        outcomes[outcome] = outcomes.get(outcome, 0) + 1
+    return {
+        "readable": True,
+        "decision": "RESEARCH_DEBT_RECORDED",
+        "ledger": str(ledger),
+        "frozen_at": data.get("frozen_at"),
+        "attempt_count": len(attempts),
+        "strategy_family_count": len({item.get("family") for item in attempts}),
+        "deployable_count": sum(
+            bool(item.get("deployable_under_current_mandate")) for item in attempts
+        ),
+        "consumed_holdout_count": sum(
+            item.get("holdout_state") == "CONSUMED" for item in attempts
+        ),
+        "non_independent_count": sum(
+            item.get("holdout_state") == "NOT_INDEPENDENT" for item in attempts
+        ),
+        "unrequested_holdout_count": sum(
+            item.get("holdout_state") == "NOT_REQUESTED" for item in attempts
+        ),
+        "outcomes": dict(sorted(outcomes.items())),
+        "next_candidate_budget": policy.get("next_candidate_budget"),
+        "parameter_search_allowed": policy.get("parameter_search_allowed"),
+    }
+
+
 def desk_status(
     api: WebullAPI,
     *,
@@ -106,6 +165,7 @@ def desk_status(
 ) -> dict[str, Any]:
     recorder = recorder_status(database)
     tca = execution_diagnostics(database)
+    research = research_status()
     accounts = {str(row.get("account_class")): row for row in api.accounts(refresh=True)}
     account_summaries = []
     missing_accounts = []
@@ -138,6 +198,10 @@ def desk_status(
         reasons.append("preexisting_equity_open_orders")
     if unmanaged_symbols:
         reasons.append("unmanaged_equity_positions")
+    if not research["readable"]:
+        reasons.append("research_ledger_unreadable")
+    elif research["deployable_count"] == 0:
+        reasons.append("no_approved_strategy")
 
     if crypto_automation is None:
         crypto_automation = _crypto_automation_status()
@@ -191,6 +255,7 @@ def desk_status(
             "target_complete_sessions": recorder["target_complete_sessions"],
         },
         "tca_progress": tca_progress,
+        "research": research,
         "accounts": account_summaries,
         "missing_accounts": missing_accounts,
         "legacy_crypto_automation": {

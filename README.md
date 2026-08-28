@@ -367,6 +367,7 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 .venv/bin/python webull_cli.py equity-strategy forward-record-status
 .venv/bin/python webull_cli.py equity-strategy forward-tca-status
 .venv/bin/python webull_cli.py equity-strategy desk-status
+.venv/bin/python webull_cli.py equity-strategy research-ledger-status
 .venv/bin/python webull_cli.py equity-strategy forward-record-install --yes
 .venv/bin/python webull_cli.py equity-strategy forward-record-uninstall --yes
 ```
@@ -376,6 +377,8 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 `forward-tca-status`只连接同一交易日中恰好相隔1、5和30分钟的有效NBBO，报告半点差、双边报价成本、中间价波动以及成本加2个基点后的最低毛优势门槛。它不生成信号或订单；固定计算见`reports/equity-forward-tca-protocol.md`。数据、研究、影子观察和极小Sandbox订单之间的授权阶梯及组合风险上限见`reports/institutional-sandbox-trading-mandate.md`。
 
 `desk-status`是只读的开盘前风险核对：同时汇总股票和加密账户的仓位、未完成订单、旧自动任务、前向数据Gate、TCA进度及当前自动交易授权。任何不是由未来股票策略建立的现有仓位都会列为未托管标的，自动策略不得触碰。
+
+`research-ledger-status`汇总全部历史策略尝试、已经消费的保留样本和当前研究预算。账本冻结在`reports/research-attempt-ledger.json`，人类可读审计见`reports/research-attempt-ledger.md`；失败规格不会从统计中删除。
 
 ## 测试
 

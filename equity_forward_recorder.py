@@ -485,6 +485,12 @@ def _deploy_runtime() -> None:
         "requirements.txt",
     ):
         shutil.copy2(ROOT / name, DEPLOY_DIR / name)
+    deployed_reports = DEPLOY_DIR / "reports"
+    deployed_reports.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        ROOT / "reports" / "research-attempt-ledger.json",
+        deployed_reports / "research-attempt-ledger.json",
+    )
     python = DEPLOY_VENV / "bin" / "python"
     if not python.exists():
         subprocess.run([sys.executable, "-m", "venv", str(DEPLOY_VENV)], check=True)
