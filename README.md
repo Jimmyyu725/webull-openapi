@@ -308,11 +308,21 @@ LaunchAgent 的最小运行副本、独立虚拟环境、原子 JSON 状态及 J
 
 一年M5筛选结果为`NO_TRADE`。基准成本下200笔往返交易净赚3,480.02美元、账户收益0.348%，但同等10%资金买入持有赚17,365.92美元；利润因子1.15、日Sharpe 0.73、Alpha t统计量1.04，四段中只有两段盈利，且多头子策略净亏损2,583.23美元。未通过的M5筛选不会进入M1精确复核、前向影子观察或Sandbox下单。
 
+## SPY–IVV 日内相对价值研究
+
+在单边趋势研究未达到专业门槛后，下一项独立假设改为同指数ETF的市场中性价差。SPY和IVV每天从09:35重新归一化，以此前20个正常交易日同一时点的价差计算z分数；偏离2个标准差时反向持有两腿，回归均值、扩大到3.5个标准差或收盘时退出。每条腿使用5%账户净值，所有信号在下一根五分钟K线开盘成交。完整规则和未见窗口在读取价格前冻结于`reports/spy-ivv-relative-value-preregistration.md`。
+
+```bash
+.venv/bin/python webull_cli.py equity-strategy spy-ivv-relative-value-backtest
+```
+
+一年M5结果为`NO_TRADE`。65笔完整配对在零成本下只赚127.78美元，平均毛优势仅0.20个基点；按每股每单1.5美分计入四次订单后净亏313.47美元，利润因子0.37，四个连续时段全部亏损。策略虽然Beta接近0，但成本后的Alpha为负，因此没有进入M1复核、影子观察或Sandbox下单。
+
 ## 测试
 
 ```bash
 .venv/bin/python -m unittest -v
-.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py
+.venv/bin/python -m compileall -q webull_api.py webull_orders.py webull_cli.py webull_streams.py crypto_strategy.py crypto_runtime.py daytrader_strategy.py daytrader_runtime.py equity_orb_strategy.py intraday_momentum_strategy.py noise_area_strategy.py relative_value_strategy.py
 ```
 
 已知环境差异：Webull Sandbox 的 `/trade/calendar` 当前返回 404；当前模拟账户的批量下单开关未开放；交易事件 gRPC 已连接成功，但 Sandbox MQTT 行情流本次在 TCP 和 WebSocket 下均返回 `101 Internal error`。这些能力仍完整保留在 CLI 中，服务端开关或状态恢复后无需改代码。若遇到 `429 TOO_MANY_REQUESTS`，等待接口限流窗口恢复后重试。

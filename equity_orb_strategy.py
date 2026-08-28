@@ -219,15 +219,26 @@ def build_sessions(
     for day in ordered_days:
         day_bars = grouped[day]
         local_times = [bar.time.astimezone(EASTERN) for bar in day_bars]
-        contiguous = all(
-            int((right.time - left.time).total_seconds()) == interval_seconds
-            for left, right in zip(day_bars, day_bars[1:])
-        )
         normal_count = 23400 // interval_seconds
         early_count = 12600 // interval_seconds
         interval_minutes = interval_seconds // 60
         normal_last = divmod(16 * 60 - interval_minutes, 60)
         early_last = divmod(13 * 60 - interval_minutes, 60)
+        contiguous = all(
+            int((right.time - left.time).total_seconds()) == interval_seconds
+            for left, right in zip(day_bars, day_bars[1:])
+        )
+        # Webull can include the first post-market bar stamped exactly 13:00
+        # after an early close. Its normal-session bars are start-stamped, so
+        # the final regular bar is 12:55 for M5 or 12:59 for M1.
+        if (
+            contiguous
+            and len(day_bars) == early_count + 1
+            and (local_times[0].hour, local_times[0].minute) == (9, 30)
+            and (local_times[-1].hour, local_times[-1].minute) == (13, 0)
+        ):
+            day_bars = day_bars[:-1]
+            local_times = local_times[:-1]
         normal = len(day_bars) == normal_count and (local_times[0].hour, local_times[0].minute) == (9, 30) and (
             local_times[-1].hour, local_times[-1].minute
         ) == normal_last

@@ -1,0 +1,3133 @@
+{
+  "generated_at": "2026-08-28T14:29:06.748078+00:00",
+  "symbols": [
+    "SPY",
+    "IVV"
+  ],
+  "window_start": "2023-03-02T00:00:00+00:00",
+  "window_end": "2024-03-02T00:00:00+00:00",
+  "timeframe": "M5",
+  "preregistration": "reports/spy-ivv-relative-value-preregistration.md",
+  "parameter_search": false,
+  "quality": {
+    "SPY": {
+      "complete_sessions": 251,
+      "dropped_boundary_sessions": 0,
+      "incomplete_middle_sessions": [],
+      "duplicates": 0,
+      "overnight_gap_flags": [],
+      "passed": true
+    },
+    "IVV": {
+      "complete_sessions": 251,
+      "dropped_boundary_sessions": 0,
+      "incomplete_middle_sessions": [],
+      "duplicates": 0,
+      "overnight_gap_flags": [],
+      "passed": true
+    }
+  },
+  "common_sessions": 251,
+  "normal_common_sessions": 249,
+  "alignment_failures": [],
+  "first_session": "2023-03-03",
+  "last_session": "2024-03-01",
+  "costs": {
+    "0.000": {
+      "cost_per_order_per_share": 0.0,
+      "net_profit": 127.7841,
+      "account_return": 0.00012778,
+      "pair_trades": 65,
+      "order_count": 260,
+      "win_rate": 0.461538,
+      "profit_factor": 1.618045,
+      "average_trade_bps": 0.197452,
+      "annualized_sharpe": 1.366754,
+      "daily_mean_t_stat": 1.361319,
+      "max_drawdown": 5.856e-05,
+      "worst_daily_account_loss": -3.087e-05,
+      "short_spy_long_ivv_profit": 80.4944,
+      "long_spy_short_ivv_profit": 47.2897,
+      "average_holding_minutes": 171.23,
+      "regression": {
+        "annualized_alpha": 0.00014987,
+        "alpha_t_stat": 1.575068,
+        "beta": -8e-05
+      }
+    },
+    "0.015": {
+      "cost_per_order_per_share": 0.015,
+      "net_profit": -313.4709,
+      "account_return": -0.00031347,
+      "pair_trades": 65,
+      "order_count": 260,
+      "win_rate": 0.276923,
+      "profit_factor": 0.365737,
+      "average_trade_bps": -0.484289,
+      "annualized_sharpe": -3.197037,
+      "daily_mean_t_stat": -3.184325,
+      "max_drawdown": 0.0003311,
+      "worst_daily_account_loss": -3.8e-05,
+      "short_spy_long_ivv_profit": -152.6206,
+      "long_spy_short_ivv_profit": -160.8503,
+      "average_holding_minutes": 171.23,
+      "regression": {
+        "annualized_alpha": -0.0003001,
+        "alpha_t_stat": -2.998939,
+        "beta": -6.1e-05
+      },
+      "trades": [
+        {
+          "day": "2023-04-20",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-04-20T14:00:00+00:00",
+          "exit_time": "2023-04-20T16:00:00+00:00",
+          "spy_entry": 411.66,
+          "spy_exit": 412.315,
+          "ivv_entry": 413.51,
+          "ivv_exit": 414.16,
+          "spy_quantity": 121,
+          "ivv_quantity": 120,
+          "entry_z": -3.190221,
+          "exit_z": -3.678158,
+          "gross_notional": 99432.06,
+          "pnl": -5.975,
+          "gross_return": -6.009e-05,
+          "holding_minutes": 120,
+          "exit_reason": "stop"
+        },
+        {
+          "day": "2023-04-26",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-04-26T14:00:00+00:00",
+          "exit_time": "2023-04-26T15:00:00+00:00",
+          "spy_entry": 406.89,
+          "spy_exit": 406.27,
+          "ivv_entry": 408.43,
+          "ivv_exit": 408.06,
+          "spy_quantity": 122,
+          "ivv_quantity": 122,
+          "entry_z": 2.605644,
+          "exit_z": 3.648738,
+          "gross_notional": 99469.04,
+          "pnl": 23.18,
+          "gross_return": 0.00023304,
+          "holding_minutes": 60,
+          "exit_reason": "stop"
+        },
+        {
+          "day": "2023-05-04",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-05-04T16:30:00+00:00",
+          "exit_time": "2023-05-04T20:00:00+00:00",
+          "spy_entry": 405.44,
+          "spy_exit": 405.13,
+          "ivv_entry": 407.25,
+          "ivv_exit": 406.86,
+          "spy_quantity": 123,
+          "ivv_quantity": 122,
+          "entry_z": 2.148727,
+          "exit_z": 0.000139,
+          "gross_notional": 99553.62,
+          "pnl": -16.8,
+          "gross_return": -0.00016875,
+          "holding_minutes": 210,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-05-10",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-05-10T14:30:00+00:00",
+          "exit_time": "2023-05-10T20:00:00+00:00",
+          "spy_entry": 412.18,
+          "spy_exit": 412.85,
+          "ivv_entry": 414.015,
+          "ivv_exit": 414.57,
+          "spy_quantity": 121,
+          "ivv_quantity": 120,
+          "entry_z": -2.217837,
+          "exit_z": -1.3e-05,
+          "gross_notional": 99555.58,
+          "pnl": 7.24,
+          "gross_return": 7.272e-05,
+          "holding_minutes": 330,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-05-15",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-05-15T15:00:00+00:00",
+          "exit_time": "2023-05-15T17:30:00+00:00",
+          "spy_entry": 411.43,
+          "spy_exit": 412.305,
+          "ivv_entry": 413.18,
+          "ivv_exit": 414.09,
+          "spy_quantity": 121,
+          "ivv_quantity": 121,
+          "entry_z": -2.030799,
+          "exit_z": 0.197884,
+          "gross_notional": 99777.81,
+          "pnl": -11.495,
+          "gross_return": -0.00011521,
+          "holding_minutes": 150,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-05-18",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-05-18T17:00:00+00:00",
+          "exit_time": "2023-05-18T17:30:00+00:00",
+          "spy_entry": 416.2,
+          "spy_exit": 416.14,
+          "ivv_entry": 418.03,
+          "ivv_exit": 418.0,
+          "spy_quantity": 120,
+          "ivv_quantity": 119,
+          "entry_z": 2.287787,
+          "exit_z": -2.41885,
+          "gross_notional": 99689.57,
+          "pnl": -3.54,
+          "gross_return": -3.551e-05,
+          "holding_minutes": 30,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-05-19",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-05-19T15:30:00+00:00",
+          "exit_time": "2023-05-19T17:30:00+00:00",
+          "spy_entry": 418.5,
+          "spy_exit": 418.77,
+          "ivv_entry": 420.3201,
+          "ivv_exit": 420.6189,
+          "spy_quantity": 119,
+          "ivv_quantity": 118,
+          "entry_z": -2.419671,
+          "exit_z": 0.244125,
+          "gross_notional": 99399.2718,
+          "pnl": -10.2384,
+          "gross_return": -0.000103,
+          "holding_minutes": 120,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-05-25",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-05-25T16:00:00+00:00",
+          "exit_time": "2023-05-25T20:00:00+00:00",
+          "spy_entry": 413.11,
+          "spy_exit": 414.65,
+          "ivv_entry": 414.93,
+          "ivv_exit": 416.48,
+          "spy_quantity": 121,
+          "ivv_quantity": 120,
+          "entry_z": 4.521365,
+          "exit_z": 0.000134,
+          "gross_notional": 99777.91,
+          "pnl": -7.57,
+          "gross_return": -7.587e-05,
+          "holding_minutes": 240,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-05-26",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-05-26T15:00:00+00:00",
+          "exit_time": "2023-05-26T15:30:00+00:00",
+          "spy_entry": 419.37,
+          "spy_exit": 418.55,
+          "ivv_entry": 421.225,
+          "ivv_exit": 420.41,
+          "spy_quantity": 119,
+          "ivv_quantity": 118,
+          "entry_z": -2.55759,
+          "exit_z": 0.930592,
+          "gross_notional": 99609.58,
+          "pnl": -8.52,
+          "gross_return": -8.553e-05,
+          "holding_minutes": 30,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-06-02",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-06-02T15:30:00+00:00",
+          "exit_time": "2023-06-02T20:00:00+00:00",
+          "spy_entry": 427.57,
+          "spy_exit": 427.92,
+          "ivv_entry": 429.535,
+          "ivv_exit": 429.79,
+          "spy_quantity": 116,
+          "ivv_quantity": 116,
+          "entry_z": -2.31461,
+          "exit_z": 9.4e-05,
+          "gross_notional": 99424.18,
+          "pnl": 4.06,
+          "gross_return": 4.084e-05,
+          "holding_minutes": 270,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-06-05",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-06-05T14:00:00+00:00",
+          "exit_time": "2023-06-05T15:00:00+00:00",
+          "spy_entry": 428.34,
+          "spy_exit": 428.575,
+          "ivv_entry": 430.31,
+          "ivv_exit": 430.48,
+          "spy_quantity": 116,
+          "ivv_quantity": 116,
+          "entry_z": 5.70286,
+          "exit_z": 5.493479,
+          "gross_notional": 99603.4,
+          "pnl": -14.5,
+          "gross_return": -0.00014558,
+          "holding_minutes": 60,
+          "exit_reason": "stop"
+        },
+        {
+          "day": "2023-06-16",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-06-16T14:00:00+00:00",
+          "exit_time": "2023-06-16T20:00:00+00:00",
+          "spy_entry": 441.29,
+          "spy_exit": 439.46,
+          "ivv_entry": 443.61,
+          "ivv_exit": 441.63,
+          "spy_quantity": 113,
+          "ivv_quantity": 112,
+          "entry_z": -2.018803,
+          "exit_z": 4.2e-05,
+          "gross_notional": 99550.09,
+          "pnl": 8.22,
+          "gross_return": 8.257e-05,
+          "holding_minutes": 360,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-06-21",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-06-21T17:00:00+00:00",
+          "exit_time": "2023-06-21T18:30:00+00:00",
+          "spy_entry": 435.34,
+          "spy_exit": 436.67,
+          "ivv_entry": 437.5401,
+          "ivv_exit": 438.98,
+          "spy_quantity": 114,
+          "ivv_quantity": 114,
+          "entry_z": -2.010217,
+          "exit_z": 0.005566,
+          "gross_notional": 99508.3314,
+          "pnl": -19.3686,
+          "gross_return": -0.00019464,
+          "holding_minutes": 90,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-07-10",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-07-10T14:00:00+00:00",
+          "exit_time": "2023-07-10T15:00:00+00:00",
+          "spy_entry": 439.08,
+          "spy_exit": 438.63,
+          "ivv_entry": 441.36,
+          "ivv_exit": 440.96,
+          "spy_quantity": 113,
+          "ivv_quantity": 113,
+          "entry_z": 4.28925,
+          "exit_z": 4.316821,
+          "gross_notional": 99489.72,
+          "pnl": -1.13,
+          "gross_return": -1.136e-05,
+          "holding_minutes": 60,
+          "exit_reason": "stop"
+        },
+        {
+          "day": "2023-07-21",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-07-21T16:00:00+00:00",
+          "exit_time": "2023-07-21T16:30:00+00:00",
+          "spy_entry": 453.695,
+          "spy_exit": 453.11,
+          "ivv_entry": 456.12,
+          "ivv_exit": 455.51,
+          "spy_quantity": 110,
+          "ivv_quantity": 109,
+          "entry_z": 3.530602,
+          "exit_z": -0.603177,
+          "gross_notional": 99623.53,
+          "pnl": -8.71,
+          "gross_return": -8.743e-05,
+          "holding_minutes": 30,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-07-26",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-07-26T19:00:00+00:00",
+          "exit_time": "2023-07-26T20:00:00+00:00",
+          "spy_entry": 456.04,
+          "spy_exit": 455.51,
+          "ivv_entry": 458.47,
+          "ivv_exit": 457.88,
+          "spy_quantity": 109,
+          "ivv_quantity": 109,
+          "entry_z": 2.244182,
+          "exit_z": 0.000287,
+          "gross_notional": 99681.59,
+          "pnl": -13.08,
+          "gross_return": -0.00013122,
+          "holding_minutes": 60,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-07-31",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-07-31T15:30:00+00:00",
+          "exit_time": "2023-07-31T20:00:00+00:00",
+          "spy_entry": 457.3,
+          "spy_exit": 457.79,
+          "ivv_entry": 459.8,
+          "ivv_exit": 460.18,
+          "spy_quantity": 109,
+          "ivv_quantity": 108,
+          "entry_z": -2.046201,
+          "exit_z": -1e-05,
+          "gross_notional": 99504.1,
+          "pnl": 5.86,
+          "gross_return": 5.889e-05,
+          "holding_minutes": 270,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-08-01",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-08-01T16:30:00+00:00",
+          "exit_time": "2023-08-01T20:00:00+00:00",
+          "spy_entry": 455.785,
+          "spy_exit": 456.48,
+          "ivv_entry": 458.1873,
+          "ivv_exit": 458.9,
+          "spy_quantity": 109,
+          "ivv_quantity": 109,
+          "entry_z": -2.154405,
+          "exit_z": -0.000198,
+          "gross_notional": 99622.9807,
+          "pnl": -8.4693,
+          "gross_return": -8.501e-05,
+          "holding_minutes": 210,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-08-09",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-08-09T14:00:00+00:00",
+          "exit_time": "2023-08-09T20:00:00+00:00",
+          "spy_entry": 448.35,
+          "spy_exit": 445.75,
+          "ivv_entry": 450.7,
+          "ivv_exit": 448.11,
+          "spy_quantity": 111,
+          "ivv_quantity": 110,
+          "entry_z": -2.083572,
+          "exit_z": -0.000148,
+          "gross_notional": 99343.85,
+          "pnl": -10.33,
+          "gross_return": -0.00010398,
+          "holding_minutes": 360,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-08-15",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-08-15T17:00:00+00:00",
+          "exit_time": "2023-08-15T19:00:00+00:00",
+          "spy_entry": 444.14,
+          "spy_exit": 444.275,
+          "ivv_entry": 446.47,
+          "ivv_exit": 446.61,
+          "spy_quantity": 112,
+          "ivv_quantity": 111,
+          "entry_z": -2.363089,
+          "exit_z": 0.517897,
+          "gross_notional": 99301.85,
+          "pnl": -7.11,
+          "gross_return": -7.16e-05,
+          "holding_minutes": 120,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-08-17",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-08-17T17:30:00+00:00",
+          "exit_time": "2023-08-17T20:00:00+00:00",
+          "spy_entry": 439.301,
+          "spy_exit": 436.29,
+          "ivv_entry": 441.51,
+          "ivv_exit": 438.61,
+          "spy_quantity": 113,
+          "ivv_quantity": 113,
+          "entry_z": 3.560281,
+          "exit_z": 5.8e-05,
+          "gross_notional": 99531.643,
+          "pnl": 5.763,
+          "gross_return": 5.79e-05,
+          "holding_minutes": 150,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-08-18",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-08-18T15:30:00+00:00",
+          "exit_time": "2023-08-18T16:30:00+00:00",
+          "spy_entry": 435.26,
+          "spy_exit": 435.72,
+          "ivv_entry": 437.57,
+          "ivv_exit": 438.0099,
+          "spy_quantity": 114,
+          "ivv_quantity": 114,
+          "entry_z": -2.017708,
+          "exit_z": 0.010775,
+          "gross_notional": 99502.62,
+          "pnl": -4.5486,
+          "gross_return": -4.571e-05,
+          "holding_minutes": 60,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-08-24",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-08-24T17:00:00+00:00",
+          "exit_time": "2023-08-24T20:00:00+00:00",
+          "spy_entry": 439.9112,
+          "spy_exit": 436.89,
+          "ivv_entry": 442.37,
+          "ivv_exit": 439.27,
+          "spy_quantity": 113,
+          "ivv_quantity": 113,
+          "entry_z": -3.072526,
+          "exit_z": -0.000198,
+          "gross_notional": 99697.7756,
+          "pnl": 2.1244,
+          "gross_return": 2.131e-05,
+          "holding_minutes": 180,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-08-25",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-08-25T14:00:00+00:00",
+          "exit_time": "2023-08-25T20:00:00+00:00",
+          "spy_entry": 439.06,
+          "spy_exit": 439.97,
+          "ivv_entry": 441.47,
+          "ivv_exit": 442.41,
+          "spy_quantity": 113,
+          "ivv_quantity": 113,
+          "entry_z": 3.123535,
+          "exit_z": -3.4e-05,
+          "gross_notional": 99499.89,
+          "pnl": -3.39,
+          "gross_return": -3.407e-05,
+          "holding_minutes": 360,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-08-28",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-08-28T14:30:00+00:00",
+          "exit_time": "2023-08-28T16:00:00+00:00",
+          "spy_entry": 443.18,
+          "spy_exit": 441.489,
+          "ivv_entry": 445.57,
+          "ivv_exit": 443.87,
+          "spy_quantity": 112,
+          "ivv_quantity": 112,
+          "entry_z": 2.278161,
+          "exit_z": -0.060661,
+          "gross_notional": 99540.0,
+          "pnl": -7.728,
+          "gross_return": -7.764e-05,
+          "holding_minutes": 90,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-08-31",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-08-31T14:30:00+00:00",
+          "exit_time": "2023-08-31T15:00:00+00:00",
+          "spy_entry": 452.67,
+          "spy_exit": 452.35,
+          "ivv_entry": 455.18,
+          "ivv_exit": 454.8,
+          "spy_quantity": 110,
+          "ivv_quantity": 109,
+          "entry_z": 2.539779,
+          "exit_z": -0.159008,
+          "gross_notional": 99408.32,
+          "pnl": -12.79,
+          "gross_return": -0.00012866,
+          "holding_minutes": 30,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-09-01",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-09-01T14:00:00+00:00",
+          "exit_time": "2023-09-01T20:00:00+00:00",
+          "spy_entry": 452.3,
+          "spy_exit": 451.19,
+          "ivv_entry": 454.52,
+          "ivv_exit": 453.65,
+          "spy_quantity": 110,
+          "ivv_quantity": 109,
+          "entry_z": 2.710287,
+          "exit_z": 0.000217,
+          "gross_notional": 99295.68,
+          "pnl": 20.7,
+          "gross_return": 0.00020847,
+          "holding_minutes": 360,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-09-06",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-09-06T15:00:00+00:00",
+          "exit_time": "2023-09-06T15:30:00+00:00",
+          "spy_entry": 445.685,
+          "spy_exit": 445.815,
+          "ivv_entry": 448.09,
+          "ivv_exit": 448.21,
+          "spy_quantity": 112,
+          "ivv_quantity": 111,
+          "entry_z": -2.006206,
+          "exit_z": 0.03718,
+          "gross_notional": 99654.71,
+          "pnl": -5.45,
+          "gross_return": -5.469e-05,
+          "holding_minutes": 30,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-09-07",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-09-07T16:00:00+00:00",
+          "exit_time": "2023-09-07T20:00:00+00:00",
+          "spy_entry": 443.99,
+          "spy_exit": 444.85,
+          "ivv_entry": 446.39,
+          "ivv_exit": 447.32,
+          "spy_quantity": 112,
+          "ivv_quantity": 111,
+          "entry_z": -2.001563,
+          "exit_z": -0.000231,
+          "gross_notional": 99276.17,
+          "pnl": -13.6,
+          "gross_return": -0.00013699,
+          "holding_minutes": 240,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-09-11",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-09-11T15:00:00+00:00",
+          "exit_time": "2023-09-11T16:00:00+00:00",
+          "spy_entry": 446.89,
+          "spy_exit": 446.9,
+          "ivv_entry": 449.2805,
+          "ivv_exit": 449.4,
+          "spy_quantity": 111,
+          "ivv_quantity": 111,
+          "entry_z": 2.44211,
+          "exit_z": -0.125078,
+          "gross_notional": 99474.9255,
+          "pnl": 5.4945,
+          "gross_return": 5.524e-05,
+          "holding_minutes": 60,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-09-12",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-09-12T16:30:00+00:00",
+          "exit_time": "2023-09-12T20:00:00+00:00",
+          "spy_entry": 447.26,
+          "spy_exit": 445.99,
+          "ivv_entry": 449.72,
+          "ivv_exit": 448.46,
+          "spy_quantity": 111,
+          "ivv_quantity": 111,
+          "entry_z": -2.089169,
+          "exit_z": -0.000113,
+          "gross_notional": 99564.78,
+          "pnl": -7.77,
+          "gross_return": -7.804e-05,
+          "holding_minutes": 210,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-09-13",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-09-13T16:30:00+00:00",
+          "exit_time": "2023-09-13T20:00:00+00:00",
+          "spy_entry": 447.375,
+          "spy_exit": 446.51,
+          "ivv_entry": 449.8441,
+          "ivv_exit": 448.88,
+          "spy_quantity": 111,
+          "ivv_quantity": 111,
+          "entry_z": 2.716722,
+          "exit_z": 0.000352,
+          "gross_notional": 99591.3201,
+          "pnl": -17.6601,
+          "gross_return": -0.00017733,
+          "holding_minutes": 210,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-09-15",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-09-15T14:30:00+00:00",
+          "exit_time": "2023-09-15T20:00:00+00:00",
+          "spy_entry": 446.0,
+          "spy_exit": 443.37,
+          "ivv_entry": 450.01,
+          "ivv_exit": 447.05,
+          "spy_quantity": 112,
+          "ivv_quantity": 111,
+          "entry_z": -2.21053,
+          "exit_z": 0.000565,
+          "gross_notional": 99903.11,
+          "pnl": 27.31,
+          "gross_return": 0.00027336,
+          "holding_minutes": 330,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-09-18",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-09-18T15:30:00+00:00",
+          "exit_time": "2023-09-18T20:00:00+00:00",
+          "spy_entry": 444.07,
+          "spy_exit": 443.63,
+          "ivv_entry": 448.08,
+          "ivv_exit": 447.82,
+          "spy_quantity": 112,
+          "ivv_quantity": 111,
+          "entry_z": 2.951784,
+          "exit_z": -0.000219,
+          "gross_notional": 99472.72,
+          "pnl": 13.73,
+          "gross_return": 0.00013803,
+          "holding_minutes": 270,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-09-19",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-09-19T14:00:00+00:00",
+          "exit_time": "2023-09-19T20:00:00+00:00",
+          "spy_entry": 442.19,
+          "spy_exit": 442.71,
+          "ivv_entry": 446.165,
+          "ivv_exit": 446.82,
+          "spy_quantity": 113,
+          "ivv_quantity": 112,
+          "entry_z": -2.545723,
+          "exit_z": -0.000292,
+          "gross_notional": 99937.95,
+          "pnl": -21.35,
+          "gross_return": -0.00021363,
+          "holding_minutes": 360,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-09-27",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-09-27T16:00:00+00:00",
+          "exit_time": "2023-09-27T20:00:00+00:00",
+          "spy_entry": 424.88,
+          "spy_exit": 426.05,
+          "ivv_entry": 426.73,
+          "ivv_exit": 427.87,
+          "spy_quantity": 117,
+          "ivv_quantity": 117,
+          "entry_z": 3.254326,
+          "exit_z": 0.000269,
+          "gross_notional": 99638.37,
+          "pnl": -10.53,
+          "gross_return": -0.00010568,
+          "holding_minutes": 240,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-09-29",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-09-29T18:00:00+00:00",
+          "exit_time": "2023-09-29T20:00:00+00:00",
+          "spy_entry": 426.17,
+          "spy_exit": 427.48,
+          "ivv_entry": 428.03,
+          "ivv_exit": 429.43,
+          "spy_quantity": 117,
+          "ivv_quantity": 116,
+          "entry_z": -2.088343,
+          "exit_z": -0.000223,
+          "gross_notional": 99513.37,
+          "pnl": -16.12,
+          "gross_return": -0.00016199,
+          "holding_minutes": 120,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-10-02",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-10-02T14:00:00+00:00",
+          "exit_time": "2023-10-02T15:00:00+00:00",
+          "spy_entry": 426.68,
+          "spy_exit": 426.39,
+          "ivv_entry": 428.56,
+          "ivv_exit": 428.23,
+          "spy_quantity": 117,
+          "ivv_quantity": 116,
+          "entry_z": -2.843407,
+          "exit_z": -4.608865,
+          "gross_notional": 99634.52,
+          "pnl": -2.64,
+          "gross_return": -2.65e-05,
+          "holding_minutes": 60,
+          "exit_reason": "stop"
+        },
+        {
+          "day": "2023-10-04",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-10-04T14:30:00+00:00",
+          "exit_time": "2023-10-04T20:00:00+00:00",
+          "spy_entry": 420.615,
+          "spy_exit": 424.66,
+          "ivv_entry": 422.5225,
+          "ivv_exit": 426.56,
+          "spy_quantity": 118,
+          "ivv_quantity": 118,
+          "entry_z": -2.113215,
+          "exit_z": -0.000286,
+          "gross_notional": 99490.225,
+          "pnl": -6.195,
+          "gross_return": -6.227e-05,
+          "holding_minutes": 330,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-10-11",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-10-11T18:30:00+00:00",
+          "exit_time": "2023-10-11T20:00:00+00:00",
+          "spy_entry": 434.64,
+          "spy_exit": 436.32,
+          "ivv_entry": 436.57,
+          "ivv_exit": 438.33,
+          "spy_quantity": 115,
+          "ivv_quantity": 114,
+          "entry_z": 2.060789,
+          "exit_z": -6.9e-05,
+          "gross_notional": 99752.58,
+          "pnl": 0.57,
+          "gross_return": 5.71e-06,
+          "holding_minutes": 90,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-10-18",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-10-18T17:30:00+00:00",
+          "exit_time": "2023-10-18T20:00:00+00:00",
+          "spy_entry": 433.0,
+          "spy_exit": 430.21,
+          "ivv_entry": 434.88,
+          "ivv_exit": 432.31,
+          "spy_quantity": 115,
+          "ivv_quantity": 114,
+          "entry_z": 2.063088,
+          "exit_z": -0.000348,
+          "gross_notional": 99371.32,
+          "pnl": 21.0,
+          "gross_return": 0.00021133,
+          "holding_minutes": 150,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-10-23",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-10-23T16:30:00+00:00",
+          "exit_time": "2023-10-23T20:00:00+00:00",
+          "spy_entry": 422.8101,
+          "spy_exit": 420.46,
+          "ivv_entry": 424.7,
+          "ivv_exit": 422.38,
+          "spy_quantity": 118,
+          "ivv_quantity": 117,
+          "entry_z": -2.668399,
+          "exit_z": -0.000335,
+          "gross_notional": 99581.4918,
+          "pnl": -12.9218,
+          "gross_return": -0.00012976,
+          "holding_minutes": 210,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-10-25",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-10-25T14:00:00+00:00",
+          "exit_time": "2023-10-25T20:00:00+00:00",
+          "spy_entry": 420.17,
+          "spy_exit": 417.55,
+          "ivv_entry": 421.93,
+          "ivv_exit": 419.51,
+          "spy_quantity": 118,
+          "ivv_quantity": 118,
+          "entry_z": 3.975103,
+          "exit_z": 6e-06,
+          "gross_notional": 99367.8,
+          "pnl": 16.52,
+          "gross_return": 0.00016625,
+          "holding_minutes": 360,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-10-27",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-10-27T16:00:00+00:00",
+          "exit_time": "2023-10-27T17:00:00+00:00",
+          "spy_entry": 413.423,
+          "spy_exit": 411.815,
+          "ivv_entry": 415.23,
+          "ivv_exit": 413.6,
+          "spy_quantity": 120,
+          "ivv_quantity": 120,
+          "entry_z": 2.130208,
+          "exit_z": -0.000755,
+          "gross_notional": 99438.36,
+          "pnl": -9.84,
+          "gross_return": -9.896e-05,
+          "holding_minutes": 60,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-11-01",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-11-01T18:00:00+00:00",
+          "exit_time": "2023-11-01T20:00:00+00:00",
+          "spy_entry": 420.1,
+          "spy_exit": 422.66,
+          "ivv_entry": 422.21,
+          "ivv_exit": 424.53,
+          "spy_quantity": 119,
+          "ivv_quantity": 118,
+          "entry_z": 2.865053,
+          "exit_z": 8.7e-05,
+          "gross_notional": 99812.68,
+          "pnl": -37.99,
+          "gross_return": -0.00038061,
+          "holding_minutes": 120,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-11-09",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-11-09T15:00:00+00:00",
+          "exit_time": "2023-11-09T21:00:00+00:00",
+          "spy_entry": 437.88,
+          "spy_exit": 433.84,
+          "ivv_entry": 439.96,
+          "ivv_exit": 435.85,
+          "spy_quantity": 114,
+          "ivv_quantity": 113,
+          "entry_z": 2.613779,
+          "exit_z": -1.8e-05,
+          "gross_notional": 99633.8,
+          "pnl": -10.68,
+          "gross_return": -0.00010719,
+          "holding_minutes": 360,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-11-17",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-11-17T16:00:00+00:00",
+          "exit_time": "2023-11-17T21:00:00+00:00",
+          "spy_entry": 450.088,
+          "spy_exit": 450.79,
+          "ivv_entry": 452.1594,
+          "ivv_exit": 452.78,
+          "spy_quantity": 111,
+          "ivv_quantity": 110,
+          "entry_z": -2.084693,
+          "exit_z": 3e-05,
+          "gross_notional": 99697.302,
+          "pnl": 3.026,
+          "gross_return": 3.035e-05,
+          "holding_minutes": 300,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-11-21",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-11-21T19:00:00+00:00",
+          "exit_time": "2023-11-21T21:00:00+00:00",
+          "spy_entry": 453.26,
+          "spy_exit": 453.27,
+          "ivv_entry": 455.32,
+          "ivv_exit": 455.37,
+          "spy_quantity": 110,
+          "ivv_quantity": 109,
+          "entry_z": -2.166578,
+          "exit_z": -0.000131,
+          "gross_notional": 99488.48,
+          "pnl": -10.92,
+          "gross_return": -0.00010976,
+          "holding_minutes": 120,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-11-22",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-11-22T16:30:00+00:00",
+          "exit_time": "2023-11-22T17:30:00+00:00",
+          "spy_entry": 455.02,
+          "spy_exit": 455.39,
+          "ivv_entry": 457.11,
+          "ivv_exit": 457.475,
+          "spy_quantity": 109,
+          "ivv_quantity": 109,
+          "entry_z": 4.364031,
+          "exit_z": -0.416864,
+          "gross_notional": 99422.17,
+          "pnl": -7.085,
+          "gross_return": -7.126e-05,
+          "holding_minutes": 60,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-11-28",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-11-28T17:30:00+00:00",
+          "exit_time": "2023-11-28T21:00:00+00:00",
+          "spy_entry": 455.405,
+          "spy_exit": 454.93,
+          "ivv_entry": 457.46,
+          "ivv_exit": 456.98,
+          "spy_quantity": 109,
+          "ivv_quantity": 109,
+          "entry_z": -2.841714,
+          "exit_z": -1e-06,
+          "gross_notional": 99502.285,
+          "pnl": -5.995,
+          "gross_return": -6.025e-05,
+          "holding_minutes": 210,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-12-06",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-12-06T16:00:00+00:00",
+          "exit_time": "2023-12-06T18:30:00+00:00",
+          "spy_entry": 457.2,
+          "spy_exit": 456.415,
+          "ivv_entry": 459.31,
+          "ivv_exit": 458.51,
+          "spy_quantity": 109,
+          "ivv_quantity": 108,
+          "entry_z": 2.444143,
+          "exit_z": -0.207812,
+          "gross_notional": 99440.28,
+          "pnl": -7.345,
+          "gross_return": -7.386e-05,
+          "holding_minutes": 150,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-12-07",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-12-07T16:00:00+00:00",
+          "exit_time": "2023-12-07T19:30:00+00:00",
+          "spy_entry": 457.9,
+          "spy_exit": 458.74,
+          "ivv_entry": 460.01,
+          "ivv_exit": 460.87,
+          "spy_quantity": 109,
+          "ivv_quantity": 108,
+          "entry_z": 2.130984,
+          "exit_z": 4.17767,
+          "gross_notional": 99592.18,
+          "pnl": -5.19,
+          "gross_return": -5.211e-05,
+          "holding_minutes": 210,
+          "exit_reason": "stop"
+        },
+        {
+          "day": "2023-12-12",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-12-12T15:00:00+00:00",
+          "exit_time": "2023-12-12T15:30:00+00:00",
+          "spy_entry": 461.5,
+          "spy_exit": 462.032,
+          "ivv_entry": 463.64,
+          "ivv_exit": 464.2,
+          "spy_quantity": 108,
+          "ivv_quantity": 107,
+          "entry_z": -2.466761,
+          "exit_z": -3.675013,
+          "gross_notional": 99451.48,
+          "pnl": -8.914,
+          "gross_return": -8.963e-05,
+          "holding_minutes": 30,
+          "exit_reason": "stop"
+        },
+        {
+          "day": "2023-12-13",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2023-12-13T19:30:00+00:00",
+          "exit_time": "2023-12-13T21:00:00+00:00",
+          "spy_entry": 467.47,
+          "spy_exit": 470.5,
+          "ivv_entry": 469.69,
+          "ivv_exit": 472.84,
+          "spy_quantity": 106,
+          "ivv_quantity": 106,
+          "entry_z": -2.090698,
+          "exit_z": -0.000346,
+          "gross_notional": 99338.96,
+          "pnl": -19.08,
+          "gross_return": -0.00019207,
+          "holding_minutes": 90,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2023-12-14",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-12-14T15:30:00+00:00",
+          "exit_time": "2023-12-14T16:00:00+00:00",
+          "spy_entry": 472.29,
+          "spy_exit": 472.585,
+          "ivv_entry": 474.44,
+          "ivv_exit": 474.79,
+          "spy_quantity": 105,
+          "ivv_quantity": 105,
+          "entry_z": 2.001755,
+          "exit_z": -1.337503,
+          "gross_notional": 99406.65,
+          "pnl": -0.525,
+          "gross_return": -5.28e-06,
+          "holding_minutes": 30,
+          "exit_reason": "convergence"
+        },
+        {
+          "day": "2023-12-21",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2023-12-21T18:00:00+00:00",
+          "exit_time": "2023-12-21T21:00:00+00:00",
+          "spy_entry": 469.47,
+          "spy_exit": 472.7,
+          "ivv_entry": 471.715,
+          "ivv_exit": 474.91,
+          "spy_quantity": 106,
+          "ivv_quantity": 105,
+          "entry_z": 3.533015,
+          "exit_z": 7.1e-05,
+          "gross_notional": 99293.895,
+          "pnl": -13.235,
+          "gross_return": -0.00013329,
+          "holding_minutes": 180,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2024-01-02",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2024-01-02T18:30:00+00:00",
+          "exit_time": "2024-01-02T21:00:00+00:00",
+          "spy_entry": 472.66,
+          "spy_exit": 472.65,
+          "ivv_entry": 474.82,
+          "ivv_exit": 474.89,
+          "spy_quantity": 105,
+          "ivv_quantity": 105,
+          "entry_z": -2.321426,
+          "exit_z": -0.000169,
+          "gross_notional": 99485.4,
+          "pnl": -14.7,
+          "gross_return": -0.00014776,
+          "holding_minutes": 150,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2024-01-16",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2024-01-16T16:00:00+00:00",
+          "exit_time": "2024-01-16T21:00:00+00:00",
+          "spy_entry": 476.21,
+          "spy_exit": 474.93,
+          "ivv_entry": 478.58,
+          "ivv_exit": 477.3,
+          "spy_quantity": 104,
+          "ivv_quantity": 104,
+          "entry_z": 2.050486,
+          "exit_z": -9.6e-05,
+          "gross_notional": 99298.16,
+          "pnl": -6.24,
+          "gross_return": -6.284e-05,
+          "holding_minutes": 300,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2024-01-18",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2024-01-18T19:30:00+00:00",
+          "exit_time": "2024-01-18T21:00:00+00:00",
+          "spy_entry": 475.62,
+          "spy_exit": 476.49,
+          "ivv_entry": 477.95,
+          "ivv_exit": 478.69,
+          "spy_quantity": 105,
+          "ivv_quantity": 104,
+          "entry_z": -2.127673,
+          "exit_z": 8.5e-05,
+          "gross_notional": 99646.9,
+          "pnl": 8.12,
+          "gross_return": 8.149e-05,
+          "holding_minutes": 90,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2024-01-19",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2024-01-19T15:00:00+00:00",
+          "exit_time": "2024-01-19T15:30:00+00:00",
+          "spy_entry": 477.91,
+          "spy_exit": 477.94,
+          "ivv_entry": 480.3,
+          "ivv_exit": 480.21,
+          "spy_quantity": 104,
+          "ivv_quantity": 104,
+          "entry_z": 8.791096,
+          "exit_z": 5.921439,
+          "gross_notional": 99653.84,
+          "pnl": -18.72,
+          "gross_return": -0.00018785,
+          "holding_minutes": 30,
+          "exit_reason": "stop"
+        },
+        {
+          "day": "2024-01-31",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2024-01-31T19:00:00+00:00",
+          "exit_time": "2024-01-31T21:00:00+00:00",
+          "spy_entry": 487.43,
+          "spy_exit": 482.88,
+          "ivv_entry": 489.81,
+          "ivv_exit": 485.2,
+          "spy_quantity": 102,
+          "ivv_quantity": 102,
+          "entry_z": 2.453456,
+          "exit_z": 0.000125,
+          "gross_notional": 99678.48,
+          "pnl": -12.24,
+          "gross_return": -0.00012279,
+          "holding_minutes": 120,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2024-02-02",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2024-02-02T15:30:00+00:00",
+          "exit_time": "2024-02-02T21:00:00+00:00",
+          "spy_entry": 490.855,
+          "spy_exit": 494.35,
+          "ivv_entry": 493.24,
+          "ivv_exit": 496.71,
+          "spy_quantity": 101,
+          "ivv_quantity": 101,
+          "entry_z": 2.02278,
+          "exit_z": 0.000249,
+          "gross_notional": 99393.595,
+          "pnl": -8.585,
+          "gross_return": -8.637e-05,
+          "holding_minutes": 330,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2024-02-22",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2024-02-22T18:00:00+00:00",
+          "exit_time": "2024-02-22T21:00:00+00:00",
+          "spy_entry": 506.45,
+          "spy_exit": 507.5,
+          "ivv_entry": 508.91,
+          "ivv_exit": 510.05,
+          "spy_quantity": 98,
+          "ivv_quantity": 98,
+          "entry_z": 2.028509,
+          "exit_z": -0.000104,
+          "gross_notional": 99505.28,
+          "pnl": 2.94,
+          "gross_return": 2.955e-05,
+          "holding_minutes": 180,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2024-02-28",
+          "direction": "LONG_SPY_SHORT_IVV",
+          "entry_time": "2024-02-28T16:30:00+00:00",
+          "exit_time": "2024-02-28T21:00:00+00:00",
+          "spy_entry": 506.51,
+          "spy_exit": 506.26,
+          "ivv_entry": 509.04,
+          "ivv_exit": 508.68,
+          "spy_quantity": 98,
+          "ivv_quantity": 98,
+          "entry_z": -2.220277,
+          "exit_z": -2.1e-05,
+          "gross_notional": 99523.9,
+          "pnl": 4.9,
+          "gross_return": 4.923e-05,
+          "holding_minutes": 270,
+          "exit_reason": "eod"
+        },
+        {
+          "day": "2024-03-01",
+          "direction": "SHORT_SPY_LONG_IVV",
+          "entry_time": "2024-03-01T15:00:00+00:00",
+          "exit_time": "2024-03-01T16:00:00+00:00",
+          "spy_entry": 509.085,
+          "spy_exit": 510.65,
+          "ivv_entry": 511.62,
+          "ivv_exit": 513.185,
+          "spy_quantity": 98,
+          "ivv_quantity": 97,
+          "entry_z": 2.391601,
+          "exit_z": -0.112336,
+          "gross_notional": 99517.47,
+          "pnl": -7.415,
+          "gross_return": -7.451e-05,
+          "holding_minutes": 60,
+          "exit_reason": "convergence"
+        }
+      ],
+      "daily": [
+        {
+          "day": "2023-03-06",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00069274,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-07",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0153287,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-08",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00163206,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-09",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.01844981,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-10",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.01442946,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-13",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0014252,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-14",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01653,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-15",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00625431,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-16",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01754521,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-17",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.01164776,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-20",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00961563,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-21",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01313049,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-22",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.01704645,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-23",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00270332,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-24",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00656205,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-27",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00186987,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-28",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0022447,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-29",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01453488,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-30",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00585524,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-03-31",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01409462,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-03",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00381055,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-04",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00554812,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-05",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00261825,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-06",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00390088,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-10",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00102642,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-11",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00026855,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-12",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00407595,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-13",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01328269,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-14",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00244274,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-17",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00358823,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-18",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00065227,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-19",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.000169,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-20",
+          "pnl": -5.975,
+          "account_return": -5.98e-06,
+          "spy_return": -0.00545709,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-04-21",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00077693,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-24",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00104318,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-25",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.01587379,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-26",
+          "pnl": 23.18,
+          "account_return": 2.318e-05,
+          "spy_return": -0.00423562,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-04-27",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.019908,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-04-28",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.0085352,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-01",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00100979,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-02",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0112392,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-03",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00686399,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-04",
+          "pnl": -16.8,
+          "account_return": -1.68e-05,
+          "spy_return": -0.00708299,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-05-05",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01851258,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-08",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00026658,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-09",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00438533,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-10",
+          "pnl": 7.24,
+          "account_return": 7.24e-06,
+          "spy_return": 0.00467233,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-05-11",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00174397,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-12",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00131027,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-15",
+          "pnl": -11.495,
+          "account_return": -1.149e-05,
+          "spy_return": 0.00345004,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-05-16",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00668265,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-17",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01213894,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-18",
+          "pnl": -3.54,
+          "account_return": -3.54e-06,
+          "spy_return": 0.00963322,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-05-19",
+          "pnl": -10.2384,
+          "account_return": -1.024e-05,
+          "spy_return": -0.00145505,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-05-22",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.0004061,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-23",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.01122281,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-24",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0072448,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-25",
+          "pnl": -7.57,
+          "account_return": -7.57e-06,
+          "spy_return": 0.0086599,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-05-26",
+          "pnl": -8.52,
+          "account_return": -8.52e-06,
+          "spy_return": 0.01295068,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-05-30",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00038093,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-05-31",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00554524,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-01",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00950102,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-02",
+          "pnl": 4.06,
+          "account_return": 4.06e-06,
+          "spy_return": 0.01446114,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-06-05",
+          "pnl": -14.5,
+          "account_return": -1.45e-05,
+          "spy_return": -0.00191625,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-06-06",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00217748,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-07",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0034577,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-08",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00604853,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-09",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00179433,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-12",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00907188,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-13",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.0065929,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-14",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00119086,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-15",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01239764,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-16",
+          "pnl": 8.22,
+          "account_return": 8.22e-06,
+          "spy_return": -0.00339275,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-06-20",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00518819,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-21",
+          "pnl": -19.3686,
+          "account_return": -1.937e-05,
+          "spy_return": -0.00512375,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-06-22",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00360969,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-23",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00755996,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-26",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00408578,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-27",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01096329,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-28",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00050439,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-29",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00394143,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-06-30",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01180069,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-03",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00137611,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-05",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00171214,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-06",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00783066,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-07",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00252468,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-10",
+          "pnl": -1.13,
+          "account_return": -1.13e-06,
+          "spy_return": 0.00253107,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-07-11",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00636856,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-12",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00804593,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-13",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00793686,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-14",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00062283,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-17",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00347222,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-18",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00743057,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-19",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00222374,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-20",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00663445,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-21",
+          "pnl": -8.71,
+          "account_return": -8.71e-06,
+          "spy_return": 0.0,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-07-24",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00446725,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-25",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00273007,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-26",
+          "pnl": -13.08,
+          "account_return": -1.308e-05,
+          "spy_return": 0.0001537,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-07-27",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00662993,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-28",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00979027,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-07-31",
+          "pnl": 5.86,
+          "account_return": 5.86e-06,
+          "spy_return": 0.00190405,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-08-01",
+          "pnl": -8.4693,
+          "account_return": -8.47e-06,
+          "spy_return": -0.00286157,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-08-02",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0139108,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-03",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00286584,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-04",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00452277,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-07",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00872854,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-08",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00434869,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-09",
+          "pnl": -10.33,
+          "account_return": -1.033e-05,
+          "spy_return": -0.00668524,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-08-10",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00035895,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-11",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00058308,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-14",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00552003,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-15",
+          "pnl": -7.11,
+          "account_return": -7.11e-06,
+          "spy_return": -0.01164893,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-08-16",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00733817,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-17",
+          "pnl": 5.763,
+          "account_return": 5.76e-06,
+          "spy_return": -0.00761987,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-08-18",
+          "pnl": -4.5486,
+          "account_return": -4.55e-06,
+          "spy_return": 0.00048133,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-08-21",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.0065063,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-22",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00270861,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-23",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01113774,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-24",
+          "pnl": 2.1244,
+          "account_return": 2.12e-06,
+          "spy_return": -0.01385911,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-08-25",
+          "pnl": -3.39,
+          "account_return": -3.39e-06,
+          "spy_return": 0.00704983,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-08-28",
+          "pnl": -7.728,
+          "account_return": -7.73e-06,
+          "spy_return": 0.00634134,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-08-29",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01445478,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-30",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.0041188,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-08-31",
+          "pnl": -12.79,
+          "account_return": -1.279e-05,
+          "spy_return": -0.00146338,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-09-01",
+          "pnl": 20.7,
+          "account_return": 2.07e-05,
+          "spy_return": 0.00186522,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-09-05",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0043219,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-09-06",
+          "pnl": -5.45,
+          "account_return": -5.45e-06,
+          "spy_return": -0.00672246,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-09-07",
+          "pnl": -13.6,
+          "account_return": -1.36e-05,
+          "spy_return": -0.00307023,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-09-08",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00150613,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-09-11",
+          "pnl": 5.4945,
+          "account_return": 5.5e-06,
+          "spy_return": 0.00657658,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-09-12",
+          "pnl": -7.77,
+          "account_return": -7.77e-06,
+          "spy_return": -0.00548556,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-09-13",
+          "pnl": -17.6601,
+          "account_return": -1.766e-05,
+          "spy_return": 0.00116595,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-09-14",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00862243,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-09-15",
+          "pnl": 27.31,
+          "account_return": 2.731e-05,
+          "spy_return": -0.01200558,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-09-18",
+          "pnl": 13.73,
+          "account_return": 1.373e-05,
+          "spy_return": 0.00058642,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-09-19",
+          "pnl": -21.35,
+          "account_return": -2.135e-05,
+          "spy_return": -0.0020738,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-09-20",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00919338,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-09-21",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.01652836,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-09-22",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00224855,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-09-25",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00420519,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-09-26",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.01469125,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-09-27",
+          "pnl": -10.53,
+          "account_return": -1.053e-05,
+          "spy_return": 0.00039917,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-09-28",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00579744,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-09-29",
+          "pnl": -16.12,
+          "account_return": -1.612e-05,
+          "spy_return": -0.00242696,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-10-02",
+          "pnl": -2.64,
+          "account_return": -2.64e-06,
+          "spy_return": -0.00039768,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-10-03",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.01338607,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-04",
+          "pnl": -6.195,
+          "account_return": -6.2e-06,
+          "spy_return": 0.00728196,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-10-05",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00037677,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-06",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01187279,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-09",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.0064022,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-10",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00520484,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-11",
+          "pnl": 0.57,
+          "account_return": 5.7e-07,
+          "spy_return": 0.00409629,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-10-12",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00609644,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-13",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00498086,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-16",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01052144,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-17",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -4.587e-05,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-18",
+          "pnl": 21.0,
+          "account_return": 2.1e-05,
+          "spy_return": -0.01332508,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-10-19",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00878641,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-20",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.01228807,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-23",
+          "pnl": -12.9218,
+          "account_return": -1.292e-05,
+          "spy_return": -0.00173318,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-10-24",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00753936,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-25",
+          "pnl": 16.52,
+          "account_return": 1.652e-05,
+          "spy_return": -0.01435215,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-10-26",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.01197461,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-27",
+          "pnl": -9.84,
+          "account_return": -9.84e-06,
+          "spy_return": -0.00453278,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-10-30",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01195578,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-10-31",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00628023,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-01",
+          "pnl": -37.99,
+          "account_return": -3.8e-05,
+          "spy_return": 0.01066475,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-11-02",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01916434,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-03",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00912341,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-06",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00230049,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-07",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00284606,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-08",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00073238,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-09",
+          "pnl": -10.68,
+          "account_return": -1.068e-05,
+          "spy_return": -0.00779874,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-11-10",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01560483,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-13",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00095322,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-14",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01940071,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-15",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00211709,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-16",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00122309,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-17",
+          "pnl": 3.026,
+          "account_return": 3.03e-06,
+          "spy_return": 0.00124381,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-11-20",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.0076976,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-21",
+          "pnl": -10.92,
+          "account_return": -1.092e-05,
+          "spy_return": -0.00217937,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-11-22",
+          "pnl": -7.085,
+          "account_return": -7.09e-06,
+          "spy_return": 0.00386083,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-11-24",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00061536,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-27",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00180101,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-28",
+          "pnl": -5.995,
+          "account_return": -6e-06,
+          "spy_return": 0.00099014,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-11-29",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0007034,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-11-30",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00393744,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-01",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00591586,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-04",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0052494,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-05",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00019707,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-06",
+          "pnl": -7.345,
+          "account_return": -7.35e-06,
+          "spy_return": -0.00402979,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-12-07",
+          "pnl": -5.19,
+          "account_return": -5.19e-06,
+          "spy_return": 0.0076304,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-12-08",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00429915,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-11",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00388961,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-12",
+          "pnl": -8.914,
+          "account_return": -8.92e-06,
+          "spy_return": 0.0045672,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-12-13",
+          "pnl": -19.08,
+          "account_return": -1.908e-05,
+          "spy_return": 0.01379013,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-12-14",
+          "pnl": -0.525,
+          "account_return": -5.3e-07,
+          "spy_return": 0.00320935,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-12-15",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00163964,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-18",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00562504,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-19",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00608089,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-20",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0138573,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-21",
+          "pnl": -13.235,
+          "account_return": -1.324e-05,
+          "spy_return": 0.00948191,
+          "trade_count": 1
+        },
+        {
+          "day": "2023-12-22",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00200973,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-26",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00422253,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-27",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00180805,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-28",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00037775,
+          "trade_count": 0
+        },
+        {
+          "day": "2023-12-29",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00289496,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-02",
+          "pnl": -14.7,
+          "account_return": -1.47e-05,
+          "spy_return": -0.00559635,
+          "trade_count": 1
+        },
+        {
+          "day": "2024-01-03",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00816672,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-04",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00322106,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-05",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00136963,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-08",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01427594,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-09",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00151707,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-10",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00565544,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-11",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00044066,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-12",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00069277,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-16",
+          "pnl": -6.24,
+          "account_return": -6.24e-06,
+          "spy_return": -0.00367123,
+          "trade_count": 1
+        },
+        {
+          "day": "2024-01-17",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00555871,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-18",
+          "pnl": 8.12,
+          "account_return": 8.12e-06,
+          "spy_return": 0.00889284,
+          "trade_count": 1
+        },
+        {
+          "day": "2024-01-19",
+          "pnl": -18.72,
+          "account_return": -1.873e-05,
+          "spy_return": 0.01246616,
+          "trade_count": 1
+        },
+        {
+          "day": "2024-01-22",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.0021143,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-23",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00291654,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-24",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.0010931,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-25",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00543893,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-26",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00127041,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-29",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00791941,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-30",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00077351,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-01-31",
+          "pnl": -12.24,
+          "account_return": -1.224e-05,
+          "spy_return": -0.0163173,
+          "trade_count": 1
+        },
+        {
+          "day": "2024-02-01",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.01308814,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-02",
+          "pnl": -8.585,
+          "account_return": -8.59e-06,
+          "spy_return": 0.01052739,
+          "trade_count": 1
+        },
+        {
+          "day": "2024-02-05",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00364114,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-06",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00290326,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-07",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00834042,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-08",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00044168,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-09",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00577942,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-12",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00043895,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-13",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.013773,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-14",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.0090876,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-15",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00689973,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-16",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.00497998,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-20",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0055054,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-21",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00090587,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-22",
+          "pnl": 2.94,
+          "account_return": 2.94e-06,
+          "spy_return": 0.02069548,
+          "trade_count": 1
+        },
+        {
+          "day": "2024-02-23",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00068966,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-26",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": -0.0036625,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-27",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00185774,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-02-28",
+          "pnl": 4.9,
+          "account_return": 4.9e-06,
+          "spy_return": -0.00132168,
+          "trade_count": 1
+        },
+        {
+          "day": "2024-02-29",
+          "pnl": 0.0,
+          "account_return": 0.0,
+          "spy_return": 0.00359499,
+          "trade_count": 0
+        },
+        {
+          "day": "2024-03-01",
+          "pnl": -7.415,
+          "account_return": -7.42e-06,
+          "spy_return": 0.00938829,
+          "trade_count": 1
+        }
+      ]
+    },
+    "0.030": {
+      "cost_per_order_per_share": 0.03,
+      "net_profit": -748.1109,
+      "account_return": -0.00074811,
+      "pair_trades": 65,
+      "order_count": 260,
+      "win_rate": 0.138462,
+      "profit_factor": 0.101542,
+      "average_trade_bps": -1.156444,
+      "annualized_sharpe": -6.176554,
+      "daily_mean_t_stat": -6.151995,
+      "max_drawdown": 0.00075076,
+      "worst_daily_account_loss": -4.25e-05,
+      "short_spy_long_ivv_profit": -375.1506,
+      "long_spy_short_ivv_profit": -372.9603,
+      "average_holding_minutes": 171.23,
+      "regression": {
+        "annualized_alpha": -0.00074465,
+        "alpha_t_stat": -6.009782,
+        "beta": -3.7e-05
+      }
+    }
+  },
+  "buy_and_hold_spy": {
+    "net_profit": 29910.95325,
+    "account_return": 0.02991095,
+    "allocated_return": 0.29910953
+  },
+  "fold_net_profits": [
+    -33.7184,
+    -85.1271,
+    -88.3964,
+    -106.229
+  ],
+  "spy_dividends": {
+    "2023-03-17": 1.506204,
+    "2023-06-16": 1.638367,
+    "2023-09-15": 1.583169,
+    "2023-12-15": 1.906073
+  },
+  "professional_gate": {
+    "passed": false,
+    "decision": "NO_TRADE",
+    "checks": {
+      "data_quality": true,
+      "zero_cost_positive": true,
+      "base_cost_positive": false,
+      "stress_cost_positive": false,
+      "minimum_pairs": true,
+      "profit_factor": false,
+      "positive_trade_expectancy": false,
+      "daily_sharpe": false,
+      "daily_t_stat": false,
+      "positive_alpha": false,
+      "alpha_t_stat": false,
+      "market_neutral_beta": true,
+      "time_stability": false,
+      "drawdown_budget": true,
+      "worst_day_budget": true,
+      "both_directions_positive": false
+    },
+    "positive_folds": 0,
+    "required_positive_folds": 3
+  }
+}

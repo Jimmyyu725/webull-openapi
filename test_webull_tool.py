@@ -49,6 +49,10 @@ from noise_area_strategy import (
     checkpoints as noise_checkpoints,
     execute_targets as execute_noise_targets,
 )
+from relative_value_strategy import (
+    checkpoint_z_scores as pair_checkpoint_z_scores,
+    trade_day as trade_pair_day,
+)
 from webull_api import is_mutating_call, redact_secrets
 from webull_cli import replace_account_placeholder
 from webull_orders import (
@@ -527,6 +531,23 @@ class EquityOrbStrategyTests(unittest.TestCase):
         self.assertEqual(len(sessions), 1)
         self.assertEqual(quality.dropped_boundary_sessions, 1)
 
+    def test_stock_sessions_trim_early_close_postmarket_bar(self):
+        from equity_orb_strategy import EASTERN
+
+        start = datetime(2023, 7, 3, 9, 30, tzinfo=EASTERN)
+        bars = [
+            Bar(
+                (start + timedelta(minutes=index * 5)).astimezone(timezone.utc),
+                Decimal("100"), Decimal("100"), Decimal("100"), Decimal("100"), Decimal("1"),
+            )
+            for index in range(43)
+        ]
+        sessions, quality = build_stock_sessions(bars)
+        self.assertEqual(len(sessions), 1)
+        self.assertEqual(len(sessions[0].bars), 42)
+        self.assertEqual(sessions[0].bars[-1].time.astimezone(EASTERN).strftime("%H:%M"), "12:55")
+        self.assertEqual(quality.incomplete_middle_sessions, ())
+
     def test_webull_stock_bars_uses_bounded_paginated_request(self):
         class MarketData:
             def __init__(self):
@@ -736,6 +757,93 @@ class NoiseAreaStrategyTests(unittest.TestCase):
         ])
         self.assertEqual([item.pnl for item in trades], [Decimal("-220.00"), Decimal("80.00")])
         self.assertEqual([item.holding_minutes for item in trades], [30, 330])
+
+
+class RelativeValueStrategyTests(unittest.TestCase):
+    def _session(
+        self,
+        day: date,
+        *,
+        closes: dict[int, Decimal] = None,
+        opens: dict[int, Decimal] = None,
+    ) -> Session:
+        from equity_orb_strategy import EASTERN
+
+        closes = closes or {}
+        opens = opens or {}
+        start = datetime(day.year, day.month, day.day, 9, 30, tzinfo=EASTERN)
+        bars = []
+        for index in range(78):
+            bar_open = opens.get(index, Decimal("100"))
+            close = closes.get(index, Decimal("100"))
+            bars.append(Bar(
+                (start + timedelta(minutes=index * 5)).astimezone(timezone.utc),
+                bar_open,
+                max(bar_open, close),
+                min(bar_open, close),
+                close,
+                Decimal("1000"),
+            ))
+        return Session(day, tuple(bars))
+
+    def test_pair_z_score_uses_prior_twenty_sessions(self):
+        history = []
+        for index in range(20):
+            day = date(2023, 1, 2) + timedelta(days=index)
+            history.append((
+                self._session(day, closes={5: Decimal("100") + Decimal(index) / Decimal("100")}),
+                self._session(day),
+            ))
+        current = (
+            self._session(date(2023, 2, 1), closes={5: Decimal("101")}),
+            self._session(date(2023, 2, 1)),
+        )
+        signal_index, execution_index, z_score = pair_checkpoint_z_scores(history, current)[0]
+        self.assertEqual((signal_index, execution_index), (5, 6))
+        self.assertGreater(z_score, 2)
+
+    def test_pair_trade_executes_next_open_and_charges_four_orders(self):
+        history = [(self._session(date(2023, 1, 2) + timedelta(days=index)), self._session(date(2023, 1, 2) + timedelta(days=index))) for index in range(20)]
+        current = (
+            self._session(date(2023, 2, 1), opens={6: Decimal("101"), 12: Decimal("100")}),
+            self._session(date(2023, 2, 1)),
+        )
+        with mock.patch(
+            "relative_value_strategy.checkpoint_z_scores",
+            return_value=[(5, 6, 2.5), (11, 12, -0.1)],
+        ):
+            trade = trade_pair_day(
+                history,
+                current,
+                equity=Decimal("1000000"),
+                cost_per_share=Decimal("0.10"),
+            )
+        self.assertIsNotNone(trade)
+        self.assertEqual(trade.direction, "SHORT_SPY_LONG_IVV")
+        self.assertEqual((trade.spy_quantity, trade.ivv_quantity), (495, 500))
+        self.assertEqual((trade.spy_entry, trade.spy_exit), (Decimal("101"), Decimal("100")))
+        self.assertEqual(trade.pnl, Decimal("296.00"))
+        self.assertEqual(trade.exit_reason, "convergence")
+
+    def test_pair_eod_close_uses_end_of_final_bar(self):
+        history = [(self._session(date(2023, 1, 2) + timedelta(days=index)), self._session(date(2023, 1, 2) + timedelta(days=index))) for index in range(20)]
+        current = (
+            self._session(date(2023, 2, 1), opens={6: Decimal("101")}),
+            self._session(date(2023, 2, 1)),
+        )
+        with mock.patch(
+            "relative_value_strategy.checkpoint_z_scores",
+            return_value=[(5, 6, 2.5)],
+        ):
+            trade = trade_pair_day(
+                history,
+                current,
+                equity=Decimal("1000000"),
+                cost_per_share=Decimal("0"),
+            )
+        self.assertEqual(trade.exit_reason, "eod")
+        self.assertEqual(trade.holding_minutes, 360)
+        self.assertEqual(trade.exit_time.astimezone().minute, 0)
 
 
 class FakeResponse:
