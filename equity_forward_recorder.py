@@ -821,6 +821,139 @@ def _median(values: list[float]) -> Optional[float]:
     return round(float(median(values)), 6) if values else None
 
 
+def _current_capture_health(connection: sqlite3.Connection) -> dict[str, Any]:
+    columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(samples)").fetchall()
+    }
+    base = {
+        "status": "not_started",
+        "sample_scope": "LATEST_SESSION_CURRENT_PROTOCOL_ONLY",
+        "capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
+        "qualification_effect": "NONE",
+        "symbols": {},
+    }
+    if "capture_protocol_version" not in columns:
+        return {**base, "status": "not_available"}
+    latest = connection.execute(
+        "SELECT MAX(session_day) FROM samples WHERE capture_protocol_version = ?",
+        (CAPTURE_PROTOCOL_VERSION,),
+    ).fetchone()
+    if not latest or not latest[0]:
+        return base
+    session_day = str(latest[0])
+    rows = connection.execute(
+        """
+        SELECT symbol, bar_time, request_time, quote_time, spread_bps,
+               valid_bar, valid_quote
+        FROM samples
+        WHERE session_day = ? AND capture_protocol_version = ?
+          AND symbol IN (?, ?, ?)
+        ORDER BY bar_time, symbol
+        """,
+        (session_day, CAPTURE_PROTOCOL_VERSION, *SYMBOLS),
+    ).fetchall()
+    grouped = {symbol: [] for symbol in SYMBOLS}
+    request_times = {symbol: {} for symbol in SYMBOLS}
+    for row in rows:
+        grouped[row[0]].append(row)
+        request_times[row[0]][row[1]] = parse_time(row[2]).astimezone(timezone.utc)
+
+    symbol_output: dict[str, Any] = {}
+    for symbol in SYMBOLS:
+        symbol_rows = grouped[symbol]
+        quote_ages = [
+            age
+            for row in symbol_rows
+            if (age := _stored_quote_age(row[2], row[3])) is not None
+        ]
+        valid_quote_rows = [
+            row
+            for row in symbol_rows
+            if row[6]
+            and (age := _stored_quote_age(row[2], row[3])) is not None
+            and age >= 0
+        ]
+        valid_quote_ages = [
+            _stored_quote_age(row[2], row[3]) for row in valid_quote_rows
+        ]
+        spreads = [row[4] for row in valid_quote_rows if row[4] is not None]
+        bar_lags = [
+            (
+                parse_time(row[2]).astimezone(timezone.utc)
+                - parse_time(row[1]).astimezone(timezone.utc)
+                - timedelta(minutes=1)
+            ).total_seconds()
+            for row in symbol_rows
+        ]
+        valid_bar_coverage = (
+            sum(bool(row[5]) for row in symbol_rows) / len(symbol_rows)
+            if symbol_rows
+            else 0.0
+        )
+        valid_quote_coverage = (
+            len(valid_quote_rows) / len(symbol_rows) if symbol_rows else 0.0
+        )
+        negative_quote_ages = sum(value < 0 for value in quote_ages)
+        negative_bar_lags = sum(value < 0 for value in bar_lags)
+        p95_quote_age = _percentile(valid_quote_ages, 0.95)
+        p95_spread = _percentile(spreads, 0.95)
+        p95_bar_lag = _percentile(bar_lags, 0.95)
+        checks = {
+            "samples_present": bool(symbol_rows),
+            "valid_bar_coverage": valid_bar_coverage == 1.0,
+            "valid_quote_coverage": valid_quote_coverage >= 0.99,
+            "quote_time_order": negative_quote_ages == 0,
+            "p95_quote_age": p95_quote_age is not None and p95_quote_age <= 5.0,
+            "p95_spread": p95_spread is not None and p95_spread <= 5.0,
+            "bar_close_time_order": negative_bar_lags == 0,
+            "p95_bar_close_lag": (
+                p95_bar_lag is not None
+                and p95_bar_lag <= MAX_P95_BAR_CLOSE_LAG_SECONDS
+            ),
+        }
+        symbol_output[symbol] = {
+            "samples": len(symbol_rows),
+            "valid_bar_coverage": round(valid_bar_coverage, 6),
+            "valid_quote_coverage": round(valid_quote_coverage, 6),
+            "negative_quote_age_count": negative_quote_ages,
+            "p95_quote_age_seconds": p95_quote_age,
+            "p95_spread_bps": p95_spread,
+            "negative_bar_close_lag_count": negative_bar_lags,
+            "p95_bar_close_lag_seconds": p95_bar_lag,
+            "quality_checks": checks,
+            "quality_passed": all(checks.values()),
+        }
+
+    aligned = set.intersection(
+        *(set(request_times[symbol]) for symbol in SYMBOLS)
+    ) if all(request_times.values()) else set()
+    skews = [
+        (
+            max(request_times[symbol][bar_time] for symbol in SYMBOLS)
+            - min(request_times[symbol][bar_time] for symbol in SYMBOLS)
+        ).total_seconds()
+        for bar_time in aligned
+    ]
+    maximum_skew = max(skews) if skews else None
+    cross_symbol_sync = (
+        maximum_skew is not None
+        and maximum_skew <= MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS
+    )
+    quality_passed = cross_symbol_sync and all(
+        item["quality_passed"] for item in symbol_output.values()
+    )
+    return {
+        **base,
+        "status": "healthy" if quality_passed else "degraded",
+        "session_day": session_day,
+        "aligned_minutes": len(aligned),
+        "maximum_cross_symbol_capture_skew_seconds": maximum_skew,
+        "cross_symbol_capture_sync": "PASS" if cross_symbol_sync else "FAIL",
+        "quality_passed": quality_passed,
+        "symbols": symbol_output,
+    }
+
+
 def status(database: Path = DATABASE) -> dict[str, Any]:
     if not database.exists():
         return {
@@ -842,6 +975,13 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
                 "status": "not_available",
                 "total_attempts": 0,
                 "counts_by_outcome": {},
+            },
+            "current_capture_health": {
+                "status": "not_started",
+                "sample_scope": "LATEST_SESSION_CURRENT_PROTOCOL_ONLY",
+                "capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
+                "qualification_effect": "NONE",
+                "symbols": {},
             },
             "database": str(database),
             "installed": LAUNCH_PLIST.exists(),
@@ -935,6 +1075,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
             "SELECT value FROM metadata WHERE key = 'started_at'"
         ).fetchone()
         attempt_summary = _capture_attempt_summary(connection)
+        current_capture_health = _current_capture_health(connection)
     complete_run = len(qualified) >= TARGET_SESSIONS
     all_quality_passed = complete_run
     return {
@@ -957,6 +1098,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
         "max_cross_symbol_capture_skew_seconds": MAX_CROSS_SYMBOL_CAPTURE_SKEW_SECONDS,
         "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
         "capture_attempt_audit": attempt_summary,
+        "current_capture_health": current_capture_health,
         "database": str(database),
         "installed": LAUNCH_PLIST.exists(),
         "launch_label": LAUNCH_LABEL,

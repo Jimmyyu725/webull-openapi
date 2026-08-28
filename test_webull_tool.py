@@ -578,6 +578,21 @@ class EquityForwardRecorderTests(unittest.TestCase):
             current["capture_attempt_audit"]["counts_by_outcome"],
             {"DUPLICATE_BAR": 1, "RECORDED": 1},
         )
+        self.assertEqual(current["current_capture_health"]["status"], "healthy")
+        self.assertEqual(
+            current["current_capture_health"]["sample_scope"],
+            "LATEST_SESSION_CURRENT_PROTOCOL_ONLY",
+        )
+        self.assertEqual(
+            current["current_capture_health"]["qualification_effect"], "NONE"
+        )
+        self.assertEqual(
+            current["current_capture_health"]["cross_symbol_capture_sync"], "PASS"
+        )
+        self.assertTrue(all(
+            item["samples"] == 1 and item["quality_passed"]
+            for item in current["current_capture_health"]["symbols"].values()
+        ))
         self.assertTrue(all(item["samples"] == 1 for item in current["symbols"].values()))
         self.assertTrue(all(item["p95_quote_age_seconds"] >= 0 for item in current["symbols"].values()))
         self.assertTrue(all(
@@ -677,12 +692,14 @@ class EquityForwardRecorderTests(unittest.TestCase):
                     ),
                 )
             legacy_coverage = equity_session_coverage(database)["sessions"][0]
+            legacy_status = equity_forward_status(database)
             result = record_equity_forward_once(
                 self._api(now),
                 now=now,
                 database=database,
                 lock_file=Path(directory) / "forward.lock",
             )
+            current = equity_forward_status(database)
             with sqlite3.connect(database) as connection:
                 columns = {
                     row[1]
@@ -704,9 +721,17 @@ class EquityForwardRecorderTests(unittest.TestCase):
             legacy_coverage["capture_protocol_versions"], ["LEGACY_UNVERSIONED"]
         )
         self.assertFalse(legacy_coverage["qualified"])
+        self.assertEqual(
+            legacy_status["current_capture_health"]["status"], "not_available"
+        )
         self.assertIn("capture_protocol_version", columns)
         self.assertEqual(versions, {None, EQUITY_FORWARD_CAPTURE_PROTOCOL_VERSION})
         self.assertEqual(attempt_tables, 1)
+        self.assertEqual(current["current_capture_health"]["status"], "healthy")
+        self.assertTrue(all(
+            item["samples"] == 1
+            for item in current["current_capture_health"]["symbols"].values()
+        ))
 
     def test_forward_recorder_skips_outside_regular_hours_without_market_call(self):
         now = datetime(2026, 8, 28, 22, 0, tzinfo=timezone.utc)
@@ -919,6 +944,12 @@ class EquityForwardRecorderTests(unittest.TestCase):
 
         self.assertEqual(result["recorded"], 3)
         self.assertEqual(ages, [-1.0, -1.0, -1.0])
+        self.assertEqual(current["current_capture_health"]["status"], "degraded")
+        self.assertTrue(all(
+            item["negative_quote_age_count"] == 1
+            and not item["quality_checks"]["quote_time_order"]
+            for item in current["current_capture_health"]["symbols"].values()
+        ))
         self.assertTrue(all(
             item["valid_quote_coverage"] == 0.0
             and item["negative_quote_age_count"] == 1
