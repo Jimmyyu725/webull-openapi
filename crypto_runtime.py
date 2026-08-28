@@ -257,9 +257,18 @@ def submit_market_order(
     candle_time: datetime,
     reason: str,
     estimated_loss: bool = False,
+    reference_price: Optional[Decimal] = None,
 ) -> dict[str, Any]:
     current_position = _position_map(api, account_id).get(symbol)
     current_open_order_count = _open_order_count(api, account_id)
+    capital = (
+        {
+            "current_buying_power": _buying_power(api, account_id),
+            "order_reference_price": reference_price,
+        }
+        if side.upper() == "BUY"
+        else {}
+    )
     authorization = authorize_automated_order(
         STRATEGY_ID,
         symbol,
@@ -271,6 +280,7 @@ def submit_market_order(
         ),
         order_quantity=quantity,
         current_open_order_count=current_open_order_count,
+        **capital,
     )
     if not authorization["authorized"]:
         log_event(
@@ -454,6 +464,7 @@ def run_once(api: WebullAPI, *, confirmed: bool, now: Optional[datetime] = None)
                     quantity=quantity,
                     candle_time=candle.time,
                     reason="ema_entry",
+                    reference_price=ask,
                 )
                 action = "blocked" if submission.get("blocked") else "buy"
             state["last_processed_candle"][symbol] = candle_id

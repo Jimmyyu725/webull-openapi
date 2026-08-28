@@ -2597,12 +2597,13 @@ class RuntimeEnvironmentTests(unittest.TestCase):
 class ExecutionAuthorizationTests(unittest.TestCase):
     def _policy(self, directory: str, **updates) -> Path:
         policy = {
-            "version": 1,
+            "version": 2,
             "environment": "api.sandbox.webull.com",
             "authorization_level": "SANDBOX_MICRO",
             "new_entries_enabled": True,
             "approved_strategy_ids": ["crypto-day-v2"],
             "approved_symbols": ["BTCUSD"],
+            "max_order_notional_fraction": "0.005",
             "expires_at": "2026-02-01T00:00:00+00:00",
         }
         policy.update(updates)
@@ -2740,6 +2741,64 @@ class ExecutionAuthorizationTests(unittest.TestCase):
         self.assertIn("open_orders_present", pending["blocking_reasons"])
         self.assertIn("invalid_new_risk_quantity", invalid["blocking_reasons"])
 
+    def test_buy_enforces_policy_notional_cap_from_fresh_buying_power(self):
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        common = {
+            "current_position_quantity": Decimal("0"),
+            "current_open_order_count": 0,
+            "current_buying_power": Decimal("1000000"),
+            "order_reference_price": Decimal("100"),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            policy = self._policy(directory)
+            boundary = authorize_automated_order(
+                "crypto-day-v2",
+                "BTCUSD",
+                "BUY",
+                policy_file=policy,
+                now=now,
+                order_quantity=Decimal("50"),
+                **common,
+            )
+            oversized = authorize_automated_order(
+                "crypto-day-v2",
+                "BTCUSD",
+                "BUY",
+                policy_file=policy,
+                now=now,
+                order_quantity=Decimal("50.0001"),
+                **common,
+            )
+            unverified = authorize_automated_order(
+                "crypto-day-v2",
+                "BTCUSD",
+                "BUY",
+                policy_file=policy,
+                now=now,
+                current_position_quantity=Decimal("0"),
+                order_quantity=Decimal("1"),
+                current_open_order_count=0,
+            )
+            invalid = authorize_automated_order(
+                "crypto-day-v2",
+                "BTCUSD",
+                "BUY",
+                policy_file=policy,
+                now=now,
+                current_position_quantity=Decimal("0"),
+                order_quantity=Decimal("1"),
+                current_open_order_count=0,
+                current_buying_power=Decimal("1000000"),
+                order_reference_price=Decimal("0"),
+            )
+
+        self.assertTrue(boundary["authorized"])
+        self.assertEqual(boundary["order_notional"], "5000")
+        self.assertEqual(boundary["maximum_order_notional"], "5000.000")
+        self.assertIn("order_notional_limit_exceeded", oversized["blocking_reasons"])
+        self.assertIn("capital_state_unverified", unverified["blocking_reasons"])
+        self.assertIn("invalid_capital_state", invalid["blocking_reasons"])
+
     def test_unexpired_policy_limits_strategy_and_symbol(self):
         now = datetime(2026, 1, 20, tzinfo=timezone.utc)
         with tempfile.TemporaryDirectory() as directory:
@@ -2753,6 +2812,8 @@ class ExecutionAuthorizationTests(unittest.TestCase):
                 current_position_quantity=Decimal("0"),
                 order_quantity=Decimal("0.01"),
                 current_open_order_count=0,
+                current_buying_power=Decimal("1000000"),
+                order_reference_price=Decimal("100"),
             )
             wrong_strategy = authorize_automated_order(
                 "crypto-ema-ha-v1", "BTCUSD", "BUY", policy_file=policy, now=now
@@ -2899,6 +2960,7 @@ class CryptoRuntimeTests(unittest.TestCase):
             quantity=Decimal("0.01"),
             candle_time=datetime(2026, 1, 20, tzinfo=timezone.utc),
             reason="test",
+            reference_price=Decimal("100"),
         )
         self.assertTrue(result["blocked"])
         self.assertEqual(api.place_calls, [])
@@ -2967,6 +3029,7 @@ class CryptoRuntimeTests(unittest.TestCase):
             quantity=Decimal("0.01"),
             candle_time=datetime(2026, 1, 20, tzinfo=timezone.utc),
             reason="test",
+            reference_price=Decimal("100"),
         )
 
         self.authorization.assert_called_once_with(
@@ -2976,6 +3039,8 @@ class CryptoRuntimeTests(unittest.TestCase):
             current_position_quantity=Decimal("0"),
             order_quantity=Decimal("0.01"),
             current_open_order_count=0,
+            current_buying_power=Decimal("1000000"),
+            order_reference_price=Decimal("100"),
         )
 
     def test_unreadable_open_order_state_fails_before_authorization(self):
@@ -3231,6 +3296,35 @@ class DayTraderRuntimeTests(unittest.TestCase):
             current_position_quantity=Decimal("0.02"),
             order_quantity=Decimal("0.01"),
             current_open_order_count=0,
+        )
+
+    def test_daytrader_buy_authorization_uses_fresh_capital_and_price(self):
+        from daytrader_runtime import _submit_order, initialize_state
+
+        api = FakeCryptoAPI()
+        now = datetime(2026, 1, 20, tzinfo=timezone.utc)
+        state = initialize_state(now)
+        _submit_order(
+            api,
+            "crypto-account",
+            state,
+            symbol="BTCUSD",
+            side="BUY",
+            quantity=Decimal("1"),
+            event_time=now,
+            reason="test",
+            reference_price=Decimal("100"),
+        )
+
+        self.authorization.assert_called_once_with(
+            "crypto-day-v2",
+            "BTCUSD",
+            "BUY",
+            current_position_quantity=Decimal("0"),
+            order_quantity=Decimal("1"),
+            current_open_order_count=0,
+            current_buying_power=Decimal("1000000"),
+            order_reference_price=Decimal("100"),
         )
 
     def test_daytrader_status_requires_capital_authorization(self):
