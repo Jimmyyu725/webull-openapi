@@ -575,14 +575,18 @@ def cmd_intermediate_sector_momentum(api: WebullAPI, _: argparse.Namespace) -> i
 
 def cmd_forward_record_once(api: WebullAPI, _: argparse.Namespace) -> int:
     from equity_forward_recorder import record_once
+    from equity_desk import record_desk_snapshot
 
     result = record_once(api)
+    journal = record_desk_snapshot(api)
     return emit({
         "outcome": result["outcome"],
         "recorded": result["recorded"],
         "decision": result["decision"],
         "complete_session_count": result["complete_session_count"],
         "qualified_session_count": result["qualified_session_count"],
+        "desk_journal_outcome": journal["outcome"],
+        "desk_journal_record_key": journal["record"]["record_key"],
     })
 
 

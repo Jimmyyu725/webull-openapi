@@ -9,7 +9,13 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from config import API_ENDPOINT
-from equity_forward_recorder import APP_DIR, DATABASE, execution_diagnostics, status as recorder_status
+from equity_forward_recorder import (
+    APP_DIR,
+    DATABASE,
+    _session_schedule,
+    execution_diagnostics,
+    status as recorder_status,
+)
 from execution_guard import authorization_status
 from webull_api import WebullAPI, normalize_result
 
@@ -343,11 +349,12 @@ def desk_journal_status(journal: Path = DESK_JOURNAL) -> dict[str, Any]:
 
 def _session_phase(now: datetime) -> tuple[str, str]:
     local = now.astimezone(EASTERN)
-    if local.weekday() >= 5:
+    session_type, scheduled_close = _session_schedule(local.date())
+    if session_type in {"CLOSED", "UNSUPPORTED"}:
         phase = "closed"
     elif local.time() < time(9, 30):
         phase = "pre_open"
-    elif local.time() < time(16, 0):
+    elif scheduled_close is not None and local.time() < scheduled_close:
         phase = "regular_hours"
     else:
         phase = "post_close"
@@ -368,7 +375,6 @@ def record_desk_snapshot(
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     session_day, phase = _session_phase(now)
     record_key = f"{session_day}:{phase}"
-    desk = desk_status(api, database=database, crypto_automation=crypto_automation)
     journal.parent.mkdir(parents=True, exist_ok=True)
     lock_file.parent.mkdir(parents=True, exist_ok=True)
     with lock_file.open("w", encoding="utf-8") as lock:
@@ -386,6 +392,7 @@ def record_desk_snapshot(
                 "record": existing,
                 "journal_status": desk_journal_status(journal),
             }
+        desk = desk_status(api, database=database, crypto_automation=crypto_automation)
         record = {
             "record_key": record_key,
             "recorded_at": now.isoformat(),

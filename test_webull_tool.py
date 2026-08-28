@@ -72,6 +72,7 @@ from equity_forward_recorder import (
 )
 from equity_desk import (
     RESEARCH_LEDGER,
+    _session_phase as equity_desk_session_phase,
     desk_journal_status,
     desk_status as equity_desk_status,
     record_desk_snapshot,
@@ -107,7 +108,7 @@ from relative_value_strategy import (
     trade_day as trade_pair_day,
 )
 from webull_api import is_mutating_call, redact_secrets
-from webull_cli import replace_account_placeholder
+from webull_cli import cmd_forward_record_once, replace_account_placeholder
 from webull_orders import (
     build_order,
     order_instrument_type,
@@ -1577,6 +1578,57 @@ class EquityDeskTests(unittest.TestCase):
         self.assertEqual(summary["entry_count"], 1)
         self.assertEqual(summary["phase_counts"], {"regular_hours": 1})
         self.assertEqual(summary["authorization_counts"], {"DATA_COLLECTION": 1})
+        self.assertEqual(api.trade.account_v2.get_account_balance.call_count, 2)
+        self.assertEqual(api.trade.account_v2.get_account_position.call_count, 2)
+        self.assertEqual(api.trade.order_v3.get_order_open.call_count, 2)
+
+    def test_desk_journal_phase_uses_frozen_nyse_calendar(self):
+        self.assertEqual(
+            equity_desk_session_phase(
+                datetime(2026, 9, 7, 15, 0, tzinfo=timezone.utc)
+            ),
+            ("2026-09-07", "closed"),
+        )
+        self.assertEqual(
+            equity_desk_session_phase(
+                datetime(2026, 11, 27, 17, 59, tzinfo=timezone.utc)
+            ),
+            ("2026-11-27", "regular_hours"),
+        )
+        self.assertEqual(
+            equity_desk_session_phase(
+                datetime(2026, 11, 27, 18, 0, tzinfo=timezone.utc)
+            ),
+            ("2026-11-27", "post_close"),
+        )
+
+    def test_forward_command_records_market_data_and_desk_journal(self):
+        recorder = {
+            "outcome": "recorded",
+            "recorded": 3,
+            "decision": "PENDING",
+            "complete_session_count": 0,
+            "qualified_session_count": 0,
+        }
+        journal = {
+            "outcome": "recorded",
+            "record": {"record_key": "2026-08-28:regular_hours"},
+        }
+        with mock.patch(
+            "equity_forward_recorder.record_once", return_value=recorder
+        ) as record, mock.patch(
+            "equity_desk.record_desk_snapshot", return_value=journal
+        ) as journal_record, mock.patch(
+            "webull_cli.emit", side_effect=lambda output: output
+        ):
+            output = cmd_forward_record_once(SimpleNamespace(), SimpleNamespace())
+
+        record.assert_called_once()
+        journal_record.assert_called_once()
+        self.assertEqual(output["desk_journal_outcome"], "recorded")
+        self.assertEqual(
+            output["desk_journal_record_key"], "2026-08-28:regular_hours"
+        )
 
     def test_desk_journal_corruption_blocks_status(self):
         with tempfile.TemporaryDirectory() as directory:

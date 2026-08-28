@@ -63,7 +63,7 @@ Gate通过只说明前向数据可用于后续研究，不说明任何策略有�
 
 ## 运行与停止
 
-- `forward-record-once`执行一次只读采样。
+- `forward-record-once`执行一次只读采样，并为冻结NYSE日历所判定的当前盘前、常规时段、盘后或休市阶段幂等写入一次只读交易台快照；重复阶段必须在读取账户接口前返回已有记录。
 - 休市日返回`market_closed`，超出2026至2028官方日历窗口返回`calendar_unsupported`；两者都不得调用行情API或创建数据库。
 - 独立LaunchAgent标签为`com.jingtianyu.webull-equity-forward`，与现有加密任务隔离；按墙钟每个整分钟触发，API执行时间不得累积为下一次触发的调度漂移。
 - 在NYSE计划交易日的08:25 ET至计划收盘之间，记录任务必须确保唯一一个macOS原生`caffeinate -s`进程存在，并在计划收盘后10分钟自动到期。该保护仅在AC供电时阻止系统睡眠，不依赖Mac当前时区，也不得阻止电池模式睡眠。
