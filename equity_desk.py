@@ -178,12 +178,15 @@ def desk_status(
     api: WebullAPI,
     *,
     database: Path = DATABASE,
+    journal: Path = DESK_JOURNAL,
+    now: Optional[datetime] = None,
     crypto_automation: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     recorder = recorder_status(database)
     tca = execution_diagnostics(database)
     research = research_status()
-    execution_authorization = authorization_status()
+    journal_status = desk_journal_status(journal, now=now)
+    execution_authorization = authorization_status(now=now)
     accounts = {str(row.get("account_class")): row for row in api.accounts(refresh=True)}
     account_summaries = []
     missing_accounts = []
@@ -216,6 +219,10 @@ def desk_status(
         reasons.append("preexisting_equity_open_orders")
     if unmanaged_symbols:
         reasons.append("unmanaged_equity_positions")
+    if not journal_status["readable"]:
+        reasons.append("desk_journal_unreadable")
+    elif journal_status["missing_required_phase_sessions"]:
+        reasons.append("desk_journal_incomplete")
     if not research["readable"]:
         reasons.append("research_ledger_unreadable")
     elif research["deployable_count"] == 0:
@@ -262,9 +269,13 @@ def desk_status(
             "reasons": reasons or ["strategy_not_preregistered"],
             "blocked_symbols": unmanaged_symbols,
             "next_gate": (
-                "qualified_forward_data"
-                if recorder["decision"] != "DATA_USABLE"
-                else "preregister_strategy"
+                "repair_desk_journal"
+                if journal_status["decision"] == "BLOCKED"
+                else (
+                    "qualified_forward_data"
+                    if recorder["decision"] != "DATA_USABLE"
+                    else "preregister_strategy"
+                )
             ),
         },
         "forward_data": {
@@ -280,6 +291,7 @@ def desk_status(
         },
         "tca_progress": tca_progress,
         "research": research,
+        "desk_journal": journal_status,
         "accounts": account_summaries,
         "missing_accounts": missing_accounts,
         "legacy_crypto_automation": {
@@ -437,7 +449,13 @@ def record_desk_snapshot(
                 "record": existing,
                 "journal_status": desk_journal_status(journal),
             }
-        desk = desk_status(api, database=database, crypto_automation=crypto_automation)
+        desk = desk_status(
+            api,
+            database=database,
+            journal=journal,
+            now=now,
+            crypto_automation=crypto_automation,
+        )
         record = {
             "record_key": record_key,
             "recorded_at": now.isoformat(),

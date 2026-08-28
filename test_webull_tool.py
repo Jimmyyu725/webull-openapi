@@ -1484,9 +1484,12 @@ class EquityDeskTests(unittest.TestCase):
             "launch_agent": {"installed": True},
         }
         with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
             result = equity_desk_status(
                 api,
-                database=Path(directory) / "missing.sqlite3",
+                database=root / "missing.sqlite3",
+                journal=root / "missing.jsonl",
+                now=datetime(2026, 8, 28, 15, 0, tzinfo=timezone.utc),
                 crypto_automation=crypto,
             )
         authorization = result["automatic_equity_trading"]
@@ -1494,6 +1497,8 @@ class EquityDeskTests(unittest.TestCase):
         self.assertEqual(authorization["status"], "BLOCKED")
         self.assertIn("forward_data_pending", authorization["reasons"])
         self.assertIn("unmanaged_equity_positions", authorization["reasons"])
+        self.assertNotIn("desk_journal_unreadable", authorization["reasons"])
+        self.assertNotIn("desk_journal_incomplete", authorization["reasons"])
         self.assertEqual(authorization["blocked_symbols"], ["AAPL"])
         self.assertTrue(result["legacy_crypto_automation"]["paused"])
         self.assertFalse(result["execution_authorization"]["new_entries_authorized"])
@@ -1505,9 +1510,12 @@ class EquityDeskTests(unittest.TestCase):
         api = self._api()
         api.trade.account_v2.get_account_balance.side_effect = RuntimeError("unavailable")
         with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
             result = equity_desk_status(
                 api,
-                database=Path(directory) / "missing.sqlite3",
+                database=root / "missing.sqlite3",
+                journal=root / "missing.jsonl",
+                now=datetime(2026, 8, 28, 15, 0, tzinfo=timezone.utc),
                 crypto_automation={
                     "state_readable": False,
                     "launch_agent": {"installed": True},
@@ -1521,6 +1529,74 @@ class EquityDeskTests(unittest.TestCase):
             result["automatic_equity_trading"]["reasons"],
         )
         self.assertTrue(all(not account["readable"] for account in result["accounts"]))
+
+    def test_desk_status_blocks_incomplete_or_unreadable_journal(self):
+        api = self._api()
+        now = datetime(2026, 11, 27, 18, 3, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "equity_desk.DESK_JOURNAL_REQUIRED_FROM", date(2026, 11, 27)
+        ):
+            root = Path(directory)
+            journal = root / "desk.jsonl"
+            journal.write_text("not-json\n", encoding="utf-8")
+            unreadable = equity_desk_status(
+                api,
+                database=root / "missing.sqlite3",
+                journal=journal,
+                now=now,
+            )
+            journal.write_text("", encoding="utf-8")
+            incomplete = equity_desk_status(
+                api,
+                database=root / "missing.sqlite3",
+                journal=journal,
+                now=now,
+            )
+            records = [
+                {
+                    "record_key": f"2026-11-27:{phase}",
+                    "recorded_at": now.isoformat(),
+                    "session_day": "2026-11-27",
+                    "phase": phase,
+                    "desk": {
+                        "authorization_level": "DATA_COLLECTION",
+                        "orders_enabled": False,
+                    },
+                }
+                for phase in ("pre_open", "post_close")
+            ]
+            journal.write_text(
+                "".join(json.dumps(record) + "\n" for record in records),
+                encoding="utf-8",
+            )
+            complete = equity_desk_status(
+                api,
+                database=root / "missing.sqlite3",
+                journal=journal,
+                now=now,
+            )
+
+        self.assertIn(
+            "desk_journal_unreadable",
+            unreadable["automatic_equity_trading"]["reasons"],
+        )
+        self.assertIn(
+            "desk_journal_incomplete",
+            incomplete["automatic_equity_trading"]["reasons"],
+        )
+        self.assertEqual(
+            incomplete["automatic_equity_trading"]["next_gate"],
+            "repair_desk_journal",
+        )
+        self.assertEqual(incomplete["desk_journal"]["decision"], "BLOCKED")
+        complete_reasons = complete["automatic_equity_trading"]["reasons"]
+        self.assertNotIn("desk_journal_unreadable", complete_reasons)
+        self.assertNotIn("desk_journal_incomplete", complete_reasons)
+        self.assertEqual(
+            complete["automatic_equity_trading"]["next_gate"],
+            "qualified_forward_data",
+        )
+        self.assertEqual(complete["desk_journal"]["decision"], "AUDIT_OK")
 
     def test_desk_source_has_no_mutating_order_calls(self):
         source = (Path(__file__).parent / "equity_desk.py").read_text(encoding="utf-8")
