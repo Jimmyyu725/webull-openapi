@@ -51,6 +51,7 @@ from equity_orb_strategy import (
     webull_stock_bars,
 )
 from equity_forward_recorder import (
+    CAPTURE_PROTOCOL_VERSION as EQUITY_FORWARD_CAPTURE_PROTOCOL_VERSION,
     EASTERN as EQUITY_FORWARD_EASTERN,
     INSERT_SAMPLE as EQUITY_FORWARD_INSERT_SAMPLE,
     LAUNCH_LABEL as EQUITY_FORWARD_LAUNCH_LABEL,
@@ -612,6 +613,73 @@ class EquityForwardRecorderTests(unittest.TestCase):
         self.assertEqual({row[0] for row in rows}, {received_at.isoformat()})
         self.assertEqual({row[1] for row in rows}, {3.0})
 
+    def test_forward_recorder_migrates_legacy_schema_without_relabeling_history(self):
+        now = datetime(2026, 8, 28, 15, 16, 30, tzinfo=timezone.utc)
+        legacy_schema = EQUITY_FORWARD_SCHEMA.replace(
+            "    capture_protocol_version TEXT,\n", ""
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "forward.sqlite3"
+            with sqlite3.connect(database) as connection:
+                connection.executescript(legacy_schema)
+                legacy_columns = [
+                    row[1] for row in connection.execute("PRAGMA table_info(samples)")
+                ]
+                legacy_bar_time = now - timedelta(minutes=2, seconds=30)
+                connection.execute(
+                    f"INSERT INTO samples ({', '.join(legacy_columns)}) "
+                    f"VALUES ({', '.join('?' for _ in legacy_columns)})",
+                    (
+                        "SPY",
+                        legacy_bar_time.isoformat(),
+                        now.isoformat(),
+                        now.astimezone(EQUITY_FORWARD_EASTERN).date().isoformat(),
+                        "RTH",
+                        100.0,
+                        101.0,
+                        99.0,
+                        100.0,
+                        1000.0,
+                        100.0,
+                        99.99,
+                        100.01,
+                        100.0,
+                        100.0,
+                        (now - timedelta(seconds=1)).isoformat(),
+                        100.0,
+                        2.0,
+                        1.0,
+                        1,
+                        1,
+                    ),
+                )
+            legacy_coverage = equity_session_coverage(database)["sessions"][0]
+            result = record_equity_forward_once(
+                self._api(now),
+                now=now,
+                database=database,
+                lock_file=Path(directory) / "forward.lock",
+            )
+            with sqlite3.connect(database) as connection:
+                columns = {
+                    row[1]
+                    for row in connection.execute("PRAGMA table_info(samples)")
+                }
+                versions = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT capture_protocol_version FROM samples"
+                    )
+                }
+
+        self.assertEqual(result["recorded"], 3)
+        self.assertEqual(
+            legacy_coverage["capture_protocol_versions"], ["LEGACY_UNVERSIONED"]
+        )
+        self.assertFalse(legacy_coverage["qualified"])
+        self.assertIn("capture_protocol_version", columns)
+        self.assertEqual(versions, {None, EQUITY_FORWARD_CAPTURE_PROTOCOL_VERSION})
+
     def test_forward_recorder_skips_outside_regular_hours_without_market_call(self):
         now = datetime(2026, 8, 29, 15, 0, tzinfo=timezone.utc)
         api = mock.Mock(spec=[])
@@ -809,6 +877,7 @@ class EquityForwardRecorderTests(unittest.TestCase):
                     1.0,
                     1,
                     1,
+                    EQUITY_FORWARD_CAPTURE_PROTOCOL_VERSION,
                 ))
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "forward.sqlite3"
@@ -823,6 +892,38 @@ class EquityForwardRecorderTests(unittest.TestCase):
             initial_status = equity_forward_status(database)
             self.assertEqual(initial_status["complete_session_count"], 1)
             self.assertEqual(initial_status["qualified_session_count"], 1)
+            self.assertEqual(
+                initial["sessions"][0]["capture_protocol_versions"],
+                [EQUITY_FORWARD_CAPTURE_PROTOCOL_VERSION],
+            )
+            self.assertEqual(
+                initial["sessions"][0]["capture_protocol_consistency"], "PASS"
+            )
+
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "UPDATE samples SET capture_protocol_version = NULL "
+                    "WHERE symbol = 'AAPL' AND bar_time = ?",
+                    (timestamps[0],),
+                )
+            mixed_protocol = equity_session_coverage(database)["sessions"][0]
+            self.assertTrue(mixed_protocol["complete"])
+            self.assertFalse(mixed_protocol["qualified"])
+            self.assertEqual(mixed_protocol["capture_protocol_consistency"], "FAIL")
+            self.assertEqual(
+                set(mixed_protocol["capture_protocol_versions"]),
+                {EQUITY_FORWARD_CAPTURE_PROTOCOL_VERSION, "LEGACY_UNVERSIONED"},
+            )
+            self.assertEqual(
+                mixed_protocol["session_quality_failures"],
+                ["capture_protocol_consistent"],
+            )
+
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "UPDATE samples SET capture_protocol_version = ?",
+                    (EQUITY_FORWARD_CAPTURE_PROTOCOL_VERSION,),
+                )
 
             with sqlite3.connect(database) as connection:
                 connection.executemany(

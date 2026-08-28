@@ -38,6 +38,8 @@ MAX_CONSECUTIVE_INTERNAL_GAP_MINUTES = 1
 TCA_HORIZONS_MINUTES = (1, 5, 30)
 TCA_OPERATIONAL_BUFFER_BPS = 2.0
 MAX_P95_BAR_CLOSE_LAG_SECONDS = 30.0
+CAPTURE_PROTOCOL_VERSION = "2026-08-29-response-time-v1"
+LEGACY_CAPTURE_PROTOCOL_VERSION = "LEGACY_UNVERSIONED"
 
 
 SCHEMA = """
@@ -63,6 +65,7 @@ CREATE TABLE IF NOT EXISTS samples (
     quote_age_seconds REAL,
     valid_bar INTEGER NOT NULL,
     valid_quote INTEGER NOT NULL,
+    capture_protocol_version TEXT,
     PRIMARY KEY (symbol, bar_time)
 );
 CREATE TABLE IF NOT EXISTS metadata (
@@ -96,6 +99,13 @@ def _connect(database: Path = DATABASE, now: Optional[datetime] = None) -> sqlit
     database.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(database)
     connection.executescript(SCHEMA)
+    columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(samples)").fetchall()
+    }
+    if "capture_protocol_version" not in columns:
+        connection.execute(
+            "ALTER TABLE samples ADD COLUMN capture_protocol_version TEXT"
+        )
     connection.execute(
         "INSERT OR IGNORE INTO metadata(key, value) VALUES ('started_at', ?)",
         ((now or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat(),),
@@ -229,6 +239,7 @@ def _record(symbol: str, bar: dict[str, Any], quote: dict[str, Any], now: dateti
         float(quote_age) if quote_age is not None else None,
         int(valid_bar),
         int(valid_quote),
+        CAPTURE_PROTOCOL_VERSION,
     )
 
 
@@ -237,8 +248,8 @@ INSERT OR IGNORE INTO samples (
     symbol, bar_time, request_time, session_day, trading_session,
     open, high, low, close, volume, last_price, bid, ask, bid_size,
     ask_size, quote_time, mid, spread_bps, quote_age_seconds,
-    valid_bar, valid_quote
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    valid_bar, valid_quote, capture_protocol_version
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 
@@ -252,6 +263,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         "mandatory_anchor_minutes": MANDATORY_ANCHOR_MINUTES,
         "max_consecutive_internal_gap_minutes": MAX_CONSECUTIVE_INTERNAL_GAP_MINUTES,
         "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
+        "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
         "complete_session_count": 0,
         "qualified_session_count": 0,
         "target_qualified_sessions": TARGET_SESSIONS,
@@ -266,10 +278,18 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         return output
 
     with closing(_read_connection(database)) as connection:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(samples)").fetchall()
+        }
+        capture_protocol_select = (
+            "capture_protocol_version"
+            if "capture_protocol_version" in columns
+            else "NULL AS capture_protocol_version"
+        )
         rows = connection.execute(
-            """
+            f"""
             SELECT symbol, session_day, bar_time, request_time, valid_bar, valid_quote,
-                   quote_time, spread_bps
+                   quote_time, spread_bps, {capture_protocol_select}
             FROM samples
             WHERE symbol IN (?, ?, ?)
             ORDER BY session_day, bar_time, symbol
@@ -287,6 +307,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         valid_quote,
         quote_time,
         spread_bps,
+        capture_protocol_version,
     ) in rows:
         values = grouped.setdefault(
             session_day,
@@ -298,6 +319,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                     "bar_close_lags": {},
                     "quote_ages": {},
                     "spreads": {},
+                    "capture_protocol_versions": set(),
                 }
                 for item in SYMBOLS
             },
@@ -306,6 +328,9 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         request_timestamp = parse_time(request_time).astimezone(timezone.utc)
         quote_age_seconds = _stored_quote_age(request_time, quote_time)
         values["observed"].add(timestamp)
+        values["capture_protocol_versions"].add(
+            capture_protocol_version or LEGACY_CAPTURE_PROTOCOL_VERSION
+        )
         values["bar_close_lags"][timestamp] = (
             request_timestamp - timestamp - timedelta(minutes=1)
         ).total_seconds()
@@ -329,6 +354,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         symbol_output: dict[str, Any] = {}
         aligned = set(expected)
         session_lags: list[float] = []
+        session_capture_protocol_versions: set[str] = set()
         for symbol in SYMBOLS:
             values = grouped[session_day][symbol]
             observed = values["observed"] & expected
@@ -361,6 +387,8 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
             p95_quote_age = _percentile(quote_ages, 0.95)
             p95_spread = _percentile(spreads, 0.95)
             negative_quote_ages = sum(value < 0 for value in all_quote_ages)
+            capture_protocol_versions = values["capture_protocol_versions"]
+            session_capture_protocol_versions.update(capture_protocol_versions)
             checks = {
                 "valid_bar_coverage": valid_bar_coverage == 1.0,
                 "valid_quote_coverage": valid_quote_coverage >= 0.99,
@@ -394,6 +422,7 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
                 ),
                 "p95_bar_close_lag_seconds": p95_lag,
                 "negative_bar_close_lag_count": negative_lags,
+                "capture_protocol_versions": sorted(capture_protocol_versions),
                 "quality_checks": checks,
                 "quality_failures": [
                     check for check, passed in checks.items() if not passed
@@ -438,6 +467,9 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
         closing_anchor_missing = sorted(closing_anchor - aligned)
         session_checks = {
             "aligned_minimum": complete,
+            "capture_protocol_consistent": (
+                session_capture_protocol_versions == {CAPTURE_PROTOCOL_VERSION}
+            ),
             "opening_anchor_complete": not opening_anchor_missing,
             "closing_anchor_complete": not closing_anchor_missing,
             "maximum_consecutive_internal_gap": (
@@ -465,6 +497,12 @@ def session_coverage(database: Path = DATABASE) -> dict[str, Any]:
             "quality_failures": quality_failures,
             "session_quality_checks": session_checks,
             "session_quality_failures": session_failures,
+            "capture_protocol_versions": sorted(session_capture_protocol_versions),
+            "capture_protocol_consistency": (
+                "PASS"
+                if session_capture_protocol_versions == {CAPTURE_PROTOCOL_VERSION}
+                else "FAIL"
+            ),
             "opening_anchor": "PASS" if not opening_anchor_missing else "FAIL",
             "opening_anchor_missing_minutes": len(opening_anchor_missing),
             "opening_anchor_missing_examples_et": [
@@ -547,6 +585,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
             "target_qualified_sessions": TARGET_SESSIONS,
             "target_complete_sessions": TARGET_SESSIONS,
             "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
+            "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
             "database": str(database),
             "installed": LAUNCH_PLIST.exists(),
             "launch_label": LAUNCH_LABEL,
@@ -653,6 +692,7 @@ def status(database: Path = DATABASE) -> dict[str, Any]:
         "target_qualified_sessions": TARGET_SESSIONS,
         "target_complete_sessions": TARGET_SESSIONS,
         "max_p95_bar_close_lag_seconds": MAX_P95_BAR_CLOSE_LAG_SECONDS,
+        "required_capture_protocol_version": CAPTURE_PROTOCOL_VERSION,
         "database": str(database),
         "installed": LAUNCH_PLIST.exists(),
         "launch_label": LAUNCH_LABEL,
